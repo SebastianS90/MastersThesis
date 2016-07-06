@@ -1,0 +1,25 @@
+% !TeX root = ../main.tex
+\section{Intermediate Language}\label{section:wyil}
+
+The \emph{Whiley Intermediate Language (WyIL)} is a byte-code format.
+The \whiley compiler first translates the source file to the intermediate language.
+This step involves parsing, type-checking and method lookup.
+The intermediate code is then translated to a destination language.
+This step is done by a backend, e.g. the \emph{Whiley to Java Compiler}.
+
+We needed to adjust some parts of the intermediate language for our lifetime extension.
+The main part is to extend types.
+Class \javainline{wyil.lang.Type} contains logic to print types in a human-readable format, to save types in a byte-code format and to interpret that byte-code format to construct the type again.
+The affected types are reference types and method types.
+
+The type automata nodes are annotated with supplementary data, e.g. the field names in records types.
+There is an \javainline{Object} typed field \javainline{data} for that purpose.
+Reference types do not yet use that field.
+We therefore can store the lifetime name in it.
+
+Method types are more complicated.
+They use the \javainline{data} field to store the number of parameters.
+We define a dedicated \javainline{Data} class for method types, containing the number of parameters, the context lifetimes, and the lifetime parameters.
+\whiley uses an algorithm to \emph{normalize} type automata.
+It relays on suitable \javainline{equals} and \javainline{hashCode} methods and uses an order among types.
+To define that order, we need to implement \javainline{Comparable<Data>} in our \javainline{Data} class.

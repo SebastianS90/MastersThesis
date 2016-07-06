@@ -1,0 +1,95 @@
+% !TeX root = ../main.tex
+\chapter{Introduction}
+
+Programmers today have the choice among dozens of different programming languages.
+They can be classified in paradigms.
+These are for example functional languages (Haskell, Erlang, Racket), procedural languages (C, Fortran, Pascal) or object-oriented languages (Java, C++, Perl).
+Programming languages can be compiled (C, C++, Pascal) or interpreted (Perl, Python, Ruby).
+Another difference is the level of abstraction regarding memory management:
+some languages like C delegate all memory management to the programmer, others use automated techniques to free unused memory.
+The first approach, \emph{manual memory} management, comes with some drawbacks:
+modern programs are inherently complex and especially when in comes to multi-threaded software, memory management can be quite cumbersome.
+While forgetting to free memory in time only leads to memory leaks, a premature deallocation generates dangling pointers.
+Accessing such a pointer is referred to as \emph{use after free}.
+It results in undefined behavior, as the memory pointed to may already have been reallocated to store something else.
+
+One approach to free programmers from the burden of manual memory management is \emph{garbage collection}.
+The runtime environment continuously analyzes which memory is no longer reachable by the running program and frees it accordingly.
+One way to implement it is reference counting.
+This is known to work well with acyclic structures \cite{Bevan1987}, but more complex analysis is needed if structures are cyclic.
+Other algorithms are for example mark-and-sweep and copying collection \cite{Zorn:1990:CMS:91556.91597}.
+Garbage collection was made popular by the \java programming language \cite{Venners:1996:IJV:541297}.
+
+All techniques for garbage collection impose some form of runtime overhead.
+Depending on the algorithm in use it might also be impossible to guarantee specific reaction times, as garbage collection can nondeterministically interrupt program execution \cite{andreae2007scoped}.
+While today's computers get more and more powerful such that garbage collection might not be a problem, technology comes up with small embedded devices like drones or even small computers as part of pacemakers.
+Here we need a small and energy efficient runtime environment, but cannot allow for any avoidable programming bugs as they might cause serious incidents with those kinds of devices.
+Another field where garbage collection is usually not applicable is operating systems development.
+
+One solution to this trade-off between performance and safety is to statically analyze the program and let the compiler infer all necessary deallocation points.
+\rust is a new programming language that employs a notion of ownership and lifetimes.
+The programmer is enforced to obey some constraints and the compiler ensures that program execution will be safe, without having an expensive runtime environment.
+In fact, \rust programs show a similar performance to \emph{C} programs \cite{RustBenchmarks}.
+
+
+\section{Whiley}
+
+The way how \java guarantees memory safety is to add some runtime checks.
+When accessing an array there will be a check that the index is within the array's bounds.
+Another common check is to ensure that a dereferenced pointer is not \texttt{null}.
+A \texttt{RuntimeException} gets thrown if one of these checks fails.
+
+An alternative to this approach is \emph{verification}.
+Given a program, you should be able to statically prove that each array access or pointer dereference will be safe for every possible program execution.
+This technique ensures that these runtime faults cannot occur at all and renders those checks redundant.
+Another application is \emph{specification}.
+The programmer annotates each function with a mathematical description of what is expected to happen.
+Using verification, we then can check that this is actually the case for the given implementation.
+
+Most programming languages do not provide assistance for these tasks.
+If at all possible, programmers need to use special extensions or external tools to specify and verify their software.
+As a result, casually written programs are often neither verified nor formally specified.
+\whiley is a programming language that aims to make specifying and verifying software a common practice \cite{WLS}.
+Included directly in the language core, the compiler ships with an integrated verifier that checks all functions and methods against their specification.
+Furthermore, it ensures absence of runtime exceptions as described above.
+This provides a perfect base for safety critical systems.
+However, \whiley currently compiles to byte code for the \emph{Java Virtual Machine} (JVM), which comes with a rather large runtime footprint unsuitable for some kinds of smaller embedded devices.
+There have been efforts to compile \whiley to embedded devices, but memory management was a big challenge, because \whiley currently relies on garbage collection done by the JVM \cite{Matt, IntegerRangeAnalysis}.
+
+
+\section{Contributions}
+
+In this thesis, we extend the \whiley programming language to introduce a concept of lifetimes.
+Similar to \rust, each lifetime describes a region in the source code where a specific reference is considered to be alive.
+During that timespan, the memory pointed to is guaranteed to still be available.
+Afterwards it can safely be freed by the compiler.
+
+We extend the language syntax to support lifetime annotations.
+Several internals of the \whiley compiler are affected by our changes, e.g. the type system needs to statically check constraints imposed by lifetimes.
+
+We implement our changes and add several test cases.
+The \whiley maintainer accepted our code and released a new version including lifetimes\footnote{\url{http://whiley.org/2016/05/28/whiley-v0-3-40-released/}}.
+
+Our extension can be used for improved memory management.
+We describe an approach how to implement automatic and safe deallocation of heap-allocated memory without garbage collection.
+This allows to write \whiley compilers targeting embedded devices that are not capable of running a full JVM.
+
+
+\section{Organization}
+
+\myref{Chapter}{chapter:background} gives a short introduction to the \whiley and \rust programming languages.
+We do not cover every detail of these languages, but we establish a basic knowledge of the key features and concepts which are necessary to understand our contribution.
+Afterwards we examine other related work.
+
+In \myref{chapter}{chapter:design}, we give a high level view of our lifetime extension.
+We first motivate our changes and then present the new syntax and meaning of lifetimes.
+Finally, we discuss possible alternatives and why they have been discarded.
+
+\myref{Chapter}{chapter:implementation} covers the actual implementation of our language extension in the \whiley compiler.
+We provide an overview of the necessary code changes and elaborate on some difficult parts.
+
+We give an evaluation of our work in \myref{chapter}{chapter:evaluation}.
+We analyze the performance impact for checking lifetimes using the test programs shipping with \whiley.
+Furthermore, we sketch a possible implementation for memory management using lifetimes to show how the \whiley to \emph{C} compiler and possibly other backends can benefit from our work.
+
+\myref{Chapter}{chapter:conclusion} concludes this thesis and shows options for future work.

@@ -1,0 +1,85 @@
+% !TeX root = ../main.tex
+\section{Motivation}\label{section:motivation}
+The main objective of our lifetime extension for \whiley is to create a basis for improved memory management.
+Consider the following perfectly fine \whiley code:
+
+\begin{whileycodec}{design-motivation-example}{\whiley example without lifetimes}
+method inc(&int x) -> &int:
+	return new ((*x) + 1)
+
+method fourtytwo() -> &int:
+	&int i = new 41
+	i = inc(i)
+	return i
+
+method main():
+	&int p = fourtytwo()
+	int i = *p
+	assert i == 42
+\end{whileycodec}
+
+We have three methods: \whileyinline{inc} is supposed to take a reference to a number and returns a reference to a number whose value is the input increased by one.
+Method \whileyinline{fourtytwo} should return a reference to a memory location holding the number \whileyinline{42} and \whileyinline{main} just checks that this is actually the case.
+
+It might not be that useful to use references in this small example program.
+But a bigger real world example could actually benefit from passing references instead of values:
+passing values can be expensive, if a lot of data has to be copied for each method call.
+Furthermore, it might me necessary for the program logic to have call-by-reference semantics.
+
+Before we can discuss compiling this specific program we have to outline typical memory management done in compilers: memory can be allocated either on the stack or on the heap.
+Stack-allocated memory will be freed automatically as its containing stack frame gets deallocated when the method returns \cite{DBLP:books/daglib/0030106}.
+Data there cannot outlive the current method invocation.
+On the other hand, heap-allocated memory has to be explicitly freed by other means, e.g. garbage collection at runtime or manual memory management done by the programmer.
+To avoid this kind of overhead, compiler writers prefer to allocate memory on the stack whenever possible.
+This usually holds for local variables.
+Fixed-size objects that do not escape the method they are allocated in can also be placed on the stack \cite{Choi:1999:EAJ:320384.320386}.
+
+Looking again at our example program from \lstref{design-motivation-example}, we can see that the allocation from line~5 does not leave the scope of method \whileyinline{fourtytwo}, as the reference returned in line~7 is the one allocated by \whileyinline{inc} in line~2.
+It might therefore be a good idea to allocate it on the stack.
+However, consider the following modified implementation of \whileyinline{inc}:
+
+\begin{whileycodec}{design-motivation-modified-inc}{Modified implementation of \whileyinline{inc}}
+method inc(&int x) -> &int:
+	*x = (*x) + 1
+	return *x
+\end{whileycodec}
+
+From a method-local point of view within \whileyinline{fourtytwo} we cannot know what method \whileyinline{inc} will be doing with the passed reference.
+While it is totally safe to do the initial allocation on the stack for the program in \lstref{design-motivation-example}, it is not possible for the modified version in \lstref{design-motivation-modified-inc}.
+
+In a real-world example both methods could be part of different program packages.
+Only expensive inter-procedural static analysis can find out whether stack-allocation is possible.
+Utilizing these kind of analysis comes with the disadvantage that you cannot compile single units any more: Changing the implementation of \whileyinline{inc} from \lstref{design-motivation-example} to \lstref{design-motivation-modified-inc} does not change its signature, but turns compiled code for method \whileyinline{fourtytwo} unsafe if it uses stack-allocation.
+
+Our system of lifetimes in \whiley solves that problem by encoding more behavior into method signatures.
+The first example can be annotated with lifetimes as follows:
+
+\begin{whileycode}
+method <a> inc(&a:int x) -> &*:int:
+	return new ((*x) + 1)
+
+method fourtytwo() -> &*:int:
+	&this:int i = this:new 41
+	&*:int i2 = inc(i)
+	return i2
+\end{whileycode}
+
+
+The signature of method \whileyinline{inc} states that it accepts one parameter which must be a reference to an integer, where the reference can have any lifetime \whileyinline{a}.
+Lifetime \whileyinline{a} is a \emph{lifetime parameter} for method \whileyinline{inc}.
+Furthermore, the return type is declared to be a reference with the \emph{default lifetime} \whileyinline{*}.
+
+Method \whileyinline{fourtytwo} can now do its allocation using the special lifetime \whileyinline{this} which is valid for the whole method body.
+Calling \whileyinline{inc} with type \whileyinline{&this:int} instantiates lifetime parameter \whileyinline{a} with \whileyinline{this}.
+The return type is \whileyinline{&*:int}.
+We store it to a separate variable that can then be returned from method \whileyinline{fourtytwo}.
+
+When we try to annotate the modified version from \lstref{design-motivation-modified-inc} with lifetimes, we end up with \whileyinline{method <a> inc(&a:int x) -> &a:int} as method signature.
+We cannot declare the return type as \whileyinline{&*:int} as the return expression's type is \whileyinline{&a:int} and our system does not allow that one to be a subtype of \whileyinline{&*:int}.
+If we try to use a method \whileyinline{inc} with the modified signature, it no longer returns type \whileyinline{&*:int}.
+Instead, the lifetime parameter \whileyinline{a} gets substituted with the actual lifetime given as method argument, which in our case is \whileyinline{this}.
+Again, method \whileyinline{fourtytwo} cannot return a value of that type, as the declared return type is \whileyinline{&*:int}.
+
+It is important to see that our extension allows to analyze both methods independently.
+The decision whether it is safe to allocate memory in \whileyinline{fourtytwo} on the stack instead of using the heap can be made only considering the own method body as well as all signatures of called methods.
+Their actual implementation does not matter.

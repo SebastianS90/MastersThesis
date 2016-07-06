@@ -1,0 +1,16 @@
+% !TeX root = ../../main.tex
+\begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=2.8cm,semithick,initial text={\whileyinline{LinkedList}},font=\footnotesize]
+\tikzstyle{every state}=[draw]
+
+\node[initial above,state] (A)                     {$\cup$};
+\node[state]               (B) [below left  of=A]  {\whileyinline{null}};
+\node[state]               (C) [below right of=A]  {rec};
+\node[state]               (D) [below left  of=C]  {\whileyinline{int}};
+
+\useasboundingbox (current bounding box.south west) rectangle ($(current bounding box.north east)+(.9cm,0)$);
+
+\path (A) edge (B)
+          edge (C)
+      (C) edge node [swap, pos=0.25] {head} (D)
+          edge [out=-45, in=23, looseness=2] node [swap, pos=0.15, xshift=-3mm] {tail} (A);
+\end{tikzpicture}

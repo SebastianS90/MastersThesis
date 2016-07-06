@@ -1,0 +1,462 @@
+% !TeX root = ../main.tex
+\section{Whiley}\label{section:background-whiley}
+
+This section provides an introduction to the \whiley programming language.
+We cover the language's main goals and all parts that are relevant for our extension to \whiley.
+
+A more complete specification of \whiley is available in the official \emph{Whiley Language Specification} \cite{WLS}.
+It introduces \whiley as follows:
+
+\begin{quote}
+``Whiley is a hybrid imperative and functional programming language designed to produce programs with as few errors as possible.
+Whiley allows explicit specifications to be given for functions, methods and data structures, and employs a verifying compiler to check whether programs meet their specifications.'' \cite[p.~7]{WLS}
+\end{quote}
+
+
+\subsection{Design}
+
+\begin{figure}[h]
+\centering
+\input{content/tikz/022_whiley_compiler_design}
+\caption{Design of the \whiley compiler}
+\label{figure:whiley-compiler-design}
+\end{figure}
+
+\whiley consists of different components as shown in \myref{Figure}{figure:whiley-compiler-design}.
+Programs are written in the \whiley language and stored as \texttt{.whiley} files.
+Compilation happens in two steps:
+The program is first translated to the \emph{Whiley Intermediate Language (WyIL)}.
+The WyIL program is then passed to a \emph{backend} which generates code for a destination language.
+Currently, the only usable backend is the \emph{Whiley to Java Compiler (WyJC)}, which generates byte code for the \emph{Java Virtual Machine (JVM)}.
+There is a backend to generate \emph{C} code, but it does not free any memory.
+Therefore it is not yet usable for large or long-running programs, or for small embedded systems that do not have a large amount of memory.
+
+Furthermore, the program can be \emph{verified}.
+This is an optional but recommended step during compilation.
+Verification is presented in \myref{section}{section:whiley-verification}.
+
+
+\subsection{Functions, Methods and Specification}
+\whiley distinguishes between \emph{functions} and \emph{methods}.
+The former one are \emph{pure}: a function will always return the same result if the same arguments are given.
+Furthermore, functions cannot have any side-effects.
+Methods do not obey these restrictions.
+The can dereference pointers and issue I/O operations.
+It is not allowed to call a method from a function.
+
+\whiley uses a call-by-value semantics.
+The function parameters can therefore be assumed to be a deep copy of the arguments given by the caller.
+Furthermore, all values are copied on assignment to other variables.
+Even when a function called with an array \whileyinline{a} assigns \whileyinline{a[0] = 2}, it does not affect the caller's array.
+This is similar to the types in \rust that are marked with \rustinline{Copy}.
+There is no aliasing for values in \whiley, unless references are used.
+References will be introduced in \myref{section}{subsection:background-whiley-references}.
+
+Specification of functions and methods in \whiley follows a simple precondition-postcondition schema.
+Both functions and methods can be specified.
+If a precondition is given, then it is not allowed to call that function or method unless the precondition is satisfied for the given arguments.
+After executing the function or method, the postcondition must be satisfied.
+Both is statically checked by the compiler, provided that it is used with the \texttt{-verify} flag.
+
+Consider a function that takes an array of numbers and yields the position of the maximum entry.
+If the maximum appears more than once in our array, then the first position shall be given.
+But what should happen if the array is empty?
+In \whiley, you typically specify that the function must not be called with an empty array.
+A possible specification is as follows:
+
+\begin{whileycodec}{background-whiley-max-spec}{Specification for our max function}
+function max(int[] input) -> (int result)
+requires |input| > 0
+ensures result >= 0 && result < |input|
+ensures all { j in 0..|input| | input[j] <= input[result] }
+ensures all { j in 0..result  | input[j] <  input[result] }:
+	// ...
+\end{whileycodec}
+
+Line~1 declares the parameters and the return type.
+Line~2 states the precondition: length of the given array must be greater than \whileyinline{0}.
+In line~3 to 5 we give several postconditions.
+All \whileyinline{ensures} clauses are semantically connected as conjunctions.
+We can reference the returned value by the name declared together with the return type, \whileyinline{result} in our case.
+The first postcondition specifies that the returned result is a valid index in the given array.
+The second condition ensures that the returned position actually holds a maximal value, i.e. all array values are less or equal than the maximal value.
+The last condition ensures that we return the first maximal position: all smaller positions hold values that are smaller (but not equal).
+
+
+\subsection{Verification}\label{section:whiley-verification}
+
+A simple implementation for the program specified in \lstref{background-whiley-max-spec} is as follows:
+\begin{whileycode}
+int result = 0
+int i = 0
+while (i < |input|):
+	if input[i] > input[result]:
+		result = i
+	i = i + 1
+return result
+\end{whileycode}
+
+\FloatBarrier
+
+The idea is as follows: we start with \whileyinline{0} as position holding a maximal value.
+Then we iterate through the array.
+If we find a position with a greater value, then we remember that new position as holding the maximal value.
+
+But if we enable verification, then the program will not compile.
+\whiley's verifier can handle sequential program flow quite well.
+It applies \emph{Hoare Logic} and \emph{strongest postcondition transformation}.
+This does not work for loops.
+We have to give a \emph{loop invariant} to help the theorem prover that internally does the verification.
+For values that are not assigned inside the loop we do not need to give any additional invariants.
+But our loop contains assignments to \whileyinline{i} and \whileyinline{result}, so we need to come up with an invariant that somehow contains these values.
+
+\begin{figure}[!b]
+\begin{whileycodec}{background-whiley-max-complete}{Specified and verified max function}
+function max(int[] input) -> (int result)
+requires |input| > 0
+ensures result >= 0 && result < |input|
+ensures all { j in 0..|input| | input[j] <= input[result] }
+ensures all { j in 0..result  | input[j] <  input[result] }:
+    result = 0
+    int i = 0
+    while (i < |input|)
+    where i >= 0 && i <= |input|
+    where result >= 0 && result < |input| && result <= i
+    where all { j in 0..i       | input[j] <= input[result] }
+    where all { j in 0..result  | input[j] <  input[result] }:
+        if input[i] > input[result]:
+            result = i
+        i = i + 1
+    return result
+\end{whileycodec}
+\end{figure}
+
+\Lstref{background-whiley-max-complete} presents a working implementation that passes verification.
+Loop invariants are given using the \whileyinline{where} keyword.
+Multiple invariants are semantically connected as conjunctions.
+Loop invariants must be satisfied before entering the loop and after executing the loop body.
+
+Our first invariant states that the loop variable \whileyinline{i} is in bounds of the \whileyinline{input} array, or equal to the arrays length.
+The latter one is for the case after the last loop iteration.
+One job of the verifier is to ensure that each array access is in bounds.
+This invariant combined with the loop condition ensures that \whileyinline{input[i]} is always in bounds.
+
+The second invariant states that \whileyinline{result} is always a valid index and it is smaller or equal to the current loop variable \whileyinline{i}.
+On entry, both variables are \whileyinline{0}, which satisfies that condition because the array is not empty.
+If \whileyinline{result} is updated, then it is set to the current index which is known to be in bounds.
+The invariant is therefore restored after each loop iteration.
+
+The last two invariants are very similar to the function's postcondition.
+The only difference is that we consider only values up to position \whileyinline{i}.
+Therefore these conditions trivially hold on loop entry.
+It is easy to see that the loop restores both conditions with every iteration.
+
+After exiting from the loop, it is known that \whileyinline{!(i < |input|)} holds.
+Furthermore, \whileyinline{i <= |input|} from our invariants still holds.
+The combination of both yields \whileyinline{i == |input|}.
+Combined with invariant from line~11 we can satisfy the postcondition in line~4.
+The remaining postconditions are directly contained in our loop invariants.
+
+\FloatBarrier
+
+\subsubsection*{Assert and Assume}
+Besides loop invariants, \whiley offers two statements that interact with verification: \whileyinline{assert} and \whileyinline{assume}.
+Both statements will check at runtime that the given condition is satisfied.
+At verification time, i.e. on compile time if the \texttt{-verify} flag is given, they influence the verifier.
+If \whileyinline{assert} is used, then the verifier must find a proof for that condition.
+The condition will then automatically hold for all program executions.
+
+On the other hand, \whileyinline{assume} inserts the given condition as an additional assumption at that position.
+It can be used to omit verifying at some places, e.g. when the theorem prover cannot find a suitable proof.
+A wrong use of \whileyinline{assume} can compile unsound programs.
+The program still aborts at runtime because of the invalid assumption, but it passes the verifier at compile time although it might contain an out-of-bounds array access:
+
+\begin{whileycode}
+int[] a = [1, 1, 2, 3, 5, 8]
+assert |a| == 6
+
+int i = 7
+assume i >= 0 && i < |a|
+int x = a[i] // out of bounds check effectively disabled
+\end{whileycode}
+
+
+\subsection{Structural Typing and Records}
+
+Another main feature of \whiley is \emph{structural typing}.
+To understand this class of type systems, we look at the differences between nominal and structural typing.
+In nominal typing, an entity's type is defined by the use of a specific name.
+Even if two type declarations have exactly the same definition, they declare two different types.
+In structural type systems, an explicit type declaration is not needed.
+The type of an entity is derived from its structure.
+Two types with equivalent structures are considered to be the same.
+
+One example for a use of structural types in \whiley are \emph{records}.
+A record is a compound that contains \emph{fields}.
+Each field has a name and a type.
+There is no specific order among record fields.
+Consider the following program:
+
+% strange bug that code must not start with opening brace unless escaped...
+\begin{whileycode}\
+{int x, int y} rec1 = {y: 7, x: 8}
+{int y, int x} rec2 = {x: 8, y: 7}
+assert rec1 == rec2
+
+assert rec1.x == 8
+rec1.x = 9
+assert rec1 != rec2
+\end{whileycode}
+
+Focus on the first half.
+We assign two local variables with records.
+Although the order of fields does not match, these assignments are valid because records are unordered.
+Furthermore, the assertion in line~3 is correct, i.e. both records have the same type and value.
+The second half of the program illustrate how we can read and write to record fields.
+
+Record types can be \emph{open}.
+An open record allows to have additional fields that are not specified by the type itself.
+Consider the following code snippet:
+
+\begin{whileycode}\
+{int x, int y, ...} rec1 = {y: 7, x: 8, z: 9, hello: "world"}
+{int y, ...} rec2 = rec1
+\end{whileycode}
+
+We declare a local variable \whileyinline{rec1} as open record and assign a value.
+The assigned record actually has more fields than the type, but it is allowed because the type is an open record.
+In line~2, we assign our record to another local variable \whileyinline{rec2}.
+Interestingly, the type of \whileyinline{rec2} is not at all the same as \whileyinline{rec1}.
+\whiley uses the type's structure for \emph{subtyping} and considers \whileyinline{{int x, int y, ...}} to be a subtype of \whileyinline{{int y, ...}}.
+This is referred to as \emph{width subtyping} in the literature.
+
+To understand subtyping in \whiley, consider for each type the set of all values it describes.
+A type \texttt{T1} is subtype of \texttt{T2} if the set of all values with type \texttt{T1} is a subset of the values of \texttt{T2}.
+The type of \whileyinline{rec1} in the program above describes the set of all records that contain at least the fields \whileyinline{int x} and \whileyinline{int y}.
+The type of \whileyinline{rec2} describes the set of all records that contain at least the field \whileyinline{int y}.
+It imposes less restrictions to its values and therefore is a superset of the set described by \whileyinline{rec1}'s type.
+
+Two types are the same if they are subtypes of each other.
+This is equivalent to stating that their sets of values are the same.
+
+
+\subsection{Union Types}
+
+\whiley's type system allows us to define types as unions of other types.
+A union contains all values that are present in any of its components.
+One possible usage is to use \whiley's \whileyinline{null} type in a union.
+The type \whileyinline{null} has exactly one value, namely \whileyinline{null}.
+It is meant to express the absence of something.
+Used in a union, it can make the type somehow optional.
+Consider a function that takes an array and an element.
+It should find a position in that array where the given element occurs.
+The function can be specified and implemented as follows:
+
+\begin{whileycode}
+function indexOf(int[] a, int x)->(int|null r)
+ensures r is null ==> no { j in 0..|a| | a[j] == x }
+ensures r is int  ==> a[r] == x:
+	int i = 0
+	while (i < |a|)
+	where i >= 0 && i <= |a|
+	where no { j in 0..i | a[j] == x }:
+		if (a[i] == x):
+			return i
+		i = i + 1
+	return null
+\end{whileycode}
+
+The return type is a union of \whileyinline{int} and \whileyinline{null}.
+The specification ensures that \whileyinline{null} is only returned when the given element is not contained in the array.
+
+
+\subsection{Type Declarations and Recursive Types}
+
+Structural types can be quite long and writing the type every time it is needed might clutter your program.
+\emph{Type declarations} allow to define a name which can be used as alias for its declared type.
+Both the name and its structural type refer to the same type:
+\begin{whileycode}
+type Point is {int x, int y}
+
+method main():
+	Point rec1 = {x: 8, y: 7}
+	{int y, int x} rec2 = rec1
+\end{whileycode}
+
+Type declarations can carry \emph{type invariants}.
+They constrain the declared type to only contain values that satisfy the given boolean expressions.
+For example, the following snippet specifies natural numbers and even numbers:
+\begin{whileycode}
+type nat  is (int x) where x >= 0
+type even is (int x) where x % 2 == 0
+\end{whileycode}
+
+Type declarations allow to specify \emph{recursive types}.
+A recursive type directly or indirectly refers to itself within its definition.
+The following program defines and uses a recursive type \whileyinline{LinkedList}.
+
+\begin{whileycode}
+type LinkedList is null | {int head, LinkedList tail}
+
+method main():
+	LinkedList list =
+	    {head: 1, tail: {head: 2, tail: {head: 3, tail: null}}}
+\end{whileycode}
+
+Although recursive types are not uncommon in other programming languages, they impose some challenges when it comes to structural typing.
+Consider the following type definitions:
+
+\begin{whileycode}
+type A is null | B
+type B is {tail: C, head: int}
+type C is {int head, A tail} | null
+\end{whileycode}
+
+After having a close look on these types we can see that \whileyinline{A} and \whileyinline{C} are structurally the same as \whileyinline{LinkedList}.
+\whiley therefore considers \whileyinline{A}, \whileyinline{C} and \whileyinline{LinkedList} to be the same type.
+Furthermore, all three are a subtype of type \whileyinline{B}.
+But there is no obvious algorithm that detects these relations.
+A trivial approach is to continuously replace type names with their declarations and compare the resulting structure.
+But this will never yield the same result because unfolding does not terminate for these recursive structures.
+To solve this challenge, \whiley uses \emph{type automata}.
+
+
+\subsubsection{Type Automata}\label{section:background-whiley-type-automata}
+
+\begin{wrapfigure}{O}{0.42\linewidth}
+\input{content/tikz/022_linked_list}
+\caption{Automaton for \whileyinline{LinkedList}}
+\label{figure:automaton-linkedlist}
+\end{wrapfigure}
+
+We give here a concise overview of how types are internally represented in \whiley.
+A more extensive introduction can be found in \cite{WYAUTL, pearce2011algorithmic}.
+
+A type is represented using a \emph{finite state automaton}.
+Each automaton state describes a type.
+The type represented by the automaton itself is the one of its start state, \whiley uses the term \emph{root state}.
+Each state is annotated with a \emph{kind} that denotes what class of type that state represents.
+Possible kinds are for example the primitive types, union, reference, record, function and method.
+Some states have outgoing transitions to other states, called \emph{children}.
+A reference state has exactly one child, namely the state describing the referenced type.
+States for primitive types do not have any children.
+A union state has a child for every type that is part of the union.
+States can carry supplementary data.
+Functions and methods for example are annotated with the number of parameters.
+Records carry the names of their fields and a flag whether the record is open.
+\myref{Figure}{figure:automaton-linkedlist} illustrates the type automaton for the type \whileyinline{LinkedList} from the example above.
+
+Values in \whiley always have the form of a finite tree, i.e. they cannot be cyclic.
+The recursive type \whileyinline{LinkedList} does not limit the depth of its values, but \whiley does not provide a way to produce a cyclic value or values of infinite depth.
+The type automata are designed such that they accept such a tree value if and only if it is contained in the automaton's type.
+
+\whiley implements a single operation on type automata:
+given two automata $A_1$ and $A_2$ it is possible to check whether the intersection $A_1 \cap A_2$ is not empty, i.e. if there is a value that is accepted by both $A_1$ and $A_2$.
+It is further possible to optionally invert one or both automata.
+We use the notation $\overline{A}$ for the inversion of automaton $A$.
+Subtyping can be reduced to this intersection problem:
+$T_1$ is a subtype of $T_2$ if and only if $A_1 \cap \overline{A_2} = \emptyset$, i.e. the intersection is empty, where $A_1$ and $A_2$ are the type automata representing $T_1$ and $T_2$.
+In other words: the values in $T_1$ are a subset of the values in $T_2$.
+
+The implementation of that intersection check is aware of recursive types.
+It recursively descends into the children of both given automata until a decision can be made.
+For recursive types, the automata will be cyclic.
+To break infinite recursion, the algorithm tracks which states have already been compared and assumes that there is an intersection for a pair of states if recursion reaches the same comparison again.
+
+
+\subsection{Flow Typing}\label{section:background-whiley-flow-typing}
+
+The type of a variable in \whiley changes along the control flow that the program takes.
+This technique is called \emph{flow typing}.
+Consider the following example:
+
+\begin{whileycode}
+function f(int|bool|null x)->(int r):
+	if x is null:
+		return 0
+
+	if x is bool:
+		if x:
+			r = 1
+		else:
+			r = 0
+
+	else:
+		r = x
+
+	return r
+\end{whileycode}
+
+Function \whileyinline{f} accepts a parameter that can have any of the types \whileyinline{int}, \whileyinline{bool} or \whileyinline{null}.
+The type of \whileyinline{x} is the union of these types, as declared in the function signature.
+In line~2 we do a so-called \emph{type test}.
+Each type test changes the current type of the tested variable.
+Inside the true branch \whileyinline{x} will have type \whileyinline{null}.
+\whiley sees that the program flow can take two paths: if the condition is true, then we will end up in line~3 and immediately return from our function.
+The other path implies that \whileyinline{x} is not \whileyinline{null}.
+\whiley calculates a type \whileyinline{int|bool|null - null} which simplifies to \whileyinline{int|bool}.
+This is the type of \whileyinline{x} from line~4 on.
+
+The next type test ensures that \whileyinline{x} is typed as \whileyinline{bool} from line~6 to 9.
+Therefore we can use it as boolean expression in line~6.
+Finally, the else branch starting in line~11 knows that \whileyinline{x} is not \whileyinline{bool}.
+The type is \whileyinline{int|bool - bool} which simplifies to \whileyinline{int}.
+Therefore we are allowed to assign \whileyinline{x} to the local variable \whileyinline{r} which is typed as \whileyinline{int}.
+
+
+\subsection{Heap-Allocated Memory and References}\label{subsection:background-whiley-references}
+
+\whiley allows to allocate memory on the heap.
+The \whileyinline{new} operator takes an expression as argument.
+It allocates the amount of memory needed to store values of the given expression's type.
+The expression is then evaluated and the result stored in the allocated space.
+A reference to it is returned as result from the \whileyinline{new} operator.
+It cannot be used in functions, only methods can allocate memory.
+
+There is no explicit deallocation operator in \whiley.
+Heap-allocated memory has to be either garbage collected at runtime or deallocated with operations inserted by the compiler.
+The \emph{Whiley to Java compiler} relies on garbage collection provided by the JVM.
+The experimental \emph{C} backend does not yet do deallocation of heap-allocated memory.
+
+The following program gives some examples for memory allocations:
+
+\begin{whileycode}
+type Point is {int x, int y}
+
+method m():
+	&int r1 = new 1
+	&bool r2 = new 3 < 4
+	Point p = {x: 5, y: 6}
+	&Point r3 = new p
+\end{whileycode}
+
+To access the memory pointed to by a reference, the \emph{dereference} operator \whileyinline{*} is used.
+We can read from and write to references.
+References provide a way to produce aliases.
+The following program shows some examples:
+
+\begin{whileycode}
+method main(whiley.lang.System.Console console):
+	&int r1 = new 1
+	&int r2 = r1
+	console.out.println(*r1) // 1
+	console.out.println(*r2) // 1
+	*r2 = 2
+	console.out.println(*r1) // 2
+	console.out.println(*r2) // 2
+	r2 = new 3
+	console.out.println(*r1) // 2
+	console.out.println(*r2) // 3
+
+	&(&int) rr = new r1
+	console.out.println(**rr) // 2
+\end{whileycode}
+
+\whileyinline{r2} is initially declared as alias for \whileyinline{r1}.
+The assignment in line~6 changes the value on the heap, such that both aliases will read the updated value.
+In line~9 we set the reference to something else.
+This does not affect the value stored on the heap, it only removes the alias we created initially.
+\whileyinline{r2} now points to a separate portion of memory, holding the value \whileyinline{3}.
+
+Line~13 and 14 illustrate that it is possible to create references to references.
+In order to read the actual value, two dereference operators are necessary.

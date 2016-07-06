@@ -1,0 +1,128 @@
+% !TeX root = ../main.tex
+\section{Lexing and Parsing}\label{section:parser}
+
+The \whiley parser can be found in package \javainline{wyc.io} and consists of two parts:
+the \emph{lexer}, implemented in class \javainline{WhileyFileLexer}, transforms the source file into a \emph{token stream}.
+Class \javainline{WhileyFileParser} is the actual parser which generates an \emph{abstract syntax tree} (AST) from these tokens.
+
+We had to adjust these components to support the syntax changes presented in \myref{section}{section:syntax}.
+
+
+\subsection{Abstract Syntax Tree}
+The \java classes for the AST nodes can be found in package \javainline{wyc.lang}.
+The following additions have been made:
+\begin{itemize}
+\item \textbf{Declared Method}: a list of lifetime parameters was added to the AST node representing a method.
+\item \textbf{Lambda Expression}: a list of lifetime parameters and a set of context lifetimes was added to the AST node representing a lambda expression.
+\item \textbf{Method Invocation Expression}: a list of lifetime arguments was added to the AST node representing a method invocation expression and the return type now reflects lifetime substitution as presented in \myref{section}{section:substitution-return-type}.
+\item \textbf{Reference Type}: a lifetime name was added to the AST node representing a reference type.
+\item \textbf{Method Type}: a list of lifetime parameters and a set of context lifetimes was added to the AST node representing a method type.
+\item \textbf{Named Block}: a new AST node for \emph{named blocks} was added. It contains the block's name and the list of statements within that block.
+\end{itemize}
+
+
+\subsection{Lexer}
+The only change to the lexer is to add \whileyinline{this} as a new keyword.
+That change is backwards-incompatible, because it affects all programs that use \texttt{this} as an identifier.
+Some of the existing test cases were affected and had to be updated to use another name instead of \texttt{this}.
+This is due to the historic actor model in \whiley that has been removed a long time ago.
+It is unlikely that many programs are affected by our change.
+
+
+\subsection{Parser}
+Changes to \javainline{WhileyFileParser} are more complex.
+The parser is structured in several methods that are responsible to \emph{consume} tokens for a specific AST node, e.g. an expression, a method declaration or a type.
+To chose the right method, a \emph{lookahead} of one or more next tokens is used.
+
+\subsubsection{Enclosing Scope}
+While parsing a function or method, some contextual information is tracked in an object of a class called \javainline{EnclosingScope}.
+The main purpose of it is to store declared variable names.
+We extend that class to also store the declared lifetime names.
+
+\whiley already expects variable names to be unique in a scope, i.e. it is not allowed to declare a local variable where the name is already used for another variable that is still in scope.
+We extend this constraint for lifetimes.
+Particularly, local variables and lifetimes must have different names.
+We use this fact later for method invocations.
+
+We add helper methods in \javainline{EnclosingScope} to declare new variables or lifetimes.
+They check whether the name is already in use and throw an appropriate exception if that is the case.
+
+\subsubsection{Methods}
+The main entry point for parsing \whiley functions and methods is the parser method \javainline{parseFunctionOrMethodDeclaration}.
+We extend it to also parse lifetime parameters for method declarations.
+They are added to the \javainline{EnclosingScope} such that the lifetime names can be used in a method's parameter and return types and within the method body.
+Lifetime \whileyinline{this}, denoting the body of a method, is added just before parsing the method body, thus ensuring that it cannot be used in parameter or return types.
+
+\subsubsection{Headless Statements}
+Some statements are not identifiable with a dedicated keyword.
+They are called \emph{headless statements} and handled in method \javainline{parseHeadlessStatement}.
+\whiley used to have the following headless statements:
+assignments, invocations, and variable declarations.
+The latter one starts with a type.
+But there are token sequences that can be parsed as a type or expression, for example an identifier can refer to a type alias or a local variable.
+The sequence \whileyinline{&foo} can denote the type \emph{reference to foo} or an address expression, where the value is the method with name \whileyinline{foo}.
+
+To disambiguate these cases, the compiler attempts to parse a type and checks whether it cannot be parsed as expression.
+In case of such a \emph{definite type}, the headless statement is a variable declaration.
+The check is done in method \javainline{mustParseAsType}.
+
+We extend that check to be aware of lifetimes in reference types.
+The sequences \whileyinline{&*:foo}, \whileyinline{&this:foo} and \whileyinline{&a:foo} cannot be parsed as expression.
+The legacy form \whileyinline{&foo} is syntactic sugar for \whileyinline{&*:foo}.
+But the check needs to know whether the default lifetime \whileyinline{*} was explicitly given or omitted.
+We therefore also extend the AST node for reference types to store such a flag.
+
+\subsubsection{Named Blocks}
+The newly introduced \emph{named blocks} are headless statements.
+We therefore extend \javainline{parseHeadlessStatement}.
+A named block starts with an identifier followed by a colon and a line break.
+
+\begin{whileycode}
+myblock:
+	// statements inside the block
+\end{whileycode}
+
+When parsing a named block, an independent clone of \javainline{EnclosingScope} is created.
+We add the identifier as a lifetime name and parse the statements within the named block.
+All following statements with greater indent are considered to be part of the named block.
+The logic for parsing that kind of indented blocks already existed, e.g. to parse the body of \whileyinline{while} loops.
+We reused that logic for named blocks.
+
+\subsubsection{Method Invocations}
+Method invocation expressions can now have optional lifetime arguments.
+Our syntax for calling a method with explicit lifetime arguments is \whileyinline{m<a, b>(x, y)}.
+But the part \whileyinline{m<a} could also be an expression, where both \whileyinline{m} and \whileyinline{a} are numeric local variables.
+To disambiguate, we enforce that lifetime names and local variables are disjoint.
+If \whileyinline{a} is a lifetime, then it has to be an invocation.
+The new disambiguation logic has been added in \javainline{parseAccessExpression} and \javainline{parseTermExpression}.
+
+\subsubsection{Reference Type and Method Type}
+\begin{sloppypar}
+Reference types are parsed in \javainline{parseReferenceType} and method types in \javainline{parseFunctionOrMethodType}.
+We extend both methods to reflect our syntax extension.
+Reference types can be annotated with a lifetime, e.g. \whileyinline{&this:int}.
+Method types now include context lifetimes and lifetime parameters, e.g. \whileyinline{method[this]<a,b>(&a:int,&b:int)->(&this:int)}.
+\end{sloppypar}
+
+The parser checks that the lifetime name in reference types and the context lifetimes for method types are already declared.
+Declared lifetimes are stored in the \javainline{EnclosingScope} object.
+We therefore need it as parameter to both methods and all methods that call them either directly or transitively.
+Most of the parser methods already have that parameter, but some methods and their invocations had to be adjusted to add it.
+
+
+\subsubsection{Allocation Expression}
+Memory allocation is done using the \whileyinline{new} expression.
+Our extension allows to specify a lifetime for the allocated portion of memory:
+\whileyinline{this:new 1}.
+Allocation expressions are parsed by method \javainline{parseNewExpression}.
+We extend it to parse the optional lifetime.
+
+Allocation expressions can now start with different tokens:
+either \whileyinline{new} if the lifetime is omitted, or any lifetime (identifier, \whileyinline{this}, or \whileyinline{*}).
+There is a lookahead logic in \javainline{parseTermExpression} that decides when to call \javainline{parseNewExpression}.
+We extend that logic to also consider a sequence of three tokens:
+lifetime, colon, \whileyinline{new}.
+
+\subsubsection{Lambda Expressions}
+Lambda expressions are parsed in method \javainline{parseLambdaExpression}.
+We extend that method to parse optional context lifetimes and lifetime parameters.

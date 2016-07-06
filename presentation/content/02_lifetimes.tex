@@ -1,0 +1,33 @@
+% !TeX root = ../main.tex
+\section{Lifetimes}
+
+\begin{frame}
+	\frametitle{Agenda}
+	\tableofcontents[currentsection,hideallsubsections]
+\end{frame}
+
+\subsection{Introduction}
+%\begin{frame}
+%	\frametitle{Lifetimes}
+%	\begin{itemize}[<+->]
+%		\item Pioneered by the \emph{Rust} programming language
+%		\begin{itemize}
+%			\item \enquote{a systems programming language that runs blazingly fast, prevents segmentation faults, and guarantees thread safety} \footnote{\url{http://www.rust-lang.org/}}
+%			\item Memory Management with \emph{Ownership} and \emph{Lifetimes}
+%		\end{itemize}
+%	\end{itemize}
+%\end{frame}
+
+\begin{frame}
+	\frametitle{Lifetimes}
+	\begin{itemize}[<+->]
+		\item Pioneered by the \emph{Rust} programming language
+		\item Region in the program's source code
+		\begin{itemize}
+			\item region must be a scope, i.e. a block
+		\end{itemize}
+		\item Reference with lifetime: guarantee that referenced location has not yet been deallocated
+		\item Static property, checked by type system
+		\item Helps to automatically manage dynamically allocated memory, without garbage collection
+	\end{itemize}
+\end{frame}

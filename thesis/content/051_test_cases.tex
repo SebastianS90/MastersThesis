@@ -1,0 +1,42 @@
+% !TeX root = ../main.tex
+\section{Test Cases}
+
+\whiley ships with a collection of test cases in the form of programs.
+There are valid and invalid programs.
+The test cases check that valid programs compile successfully and their execution passes all \whileyinline{assert} and \whileyinline{assume} runtime checks.
+Compilation of invalid programs has to fail and yield the expected error message.
+
+To see the performance impact of our lifetime extension on legacy programs, we compare execution times of existing tests with and without the lifetime extension.
+The test execution time is the compilation time for the test program and for the valid programs additionally the program's execution time.
+To minimize the effect of statistical distribution, we run the tests 25 times each and take the average value for comparison.
+We execute the tests on an Intel Core i3 2~GHz dual core processor.
+
+There are 483 existing test cases for valid programs.
+The total test execution time for these tests increases from $51.95$ to $57.49$ seconds when using our extension.
+This is an increase of $10.66\%$.
+Compilation time of the 261 existing invalid programs increases from $9.09$ to $9.81$ seconds, i.e. by $7.92\%$.
+
+\begin{wraptable}{O}{0.65\linewidth}
+\footnotesize
+\begin{tabular}{ l | c | c | r | r}
+test case              & old     & new     & diff $[ms]$ & diff $[\%]$ \\
+\hline
+FunctionRef\_Valid\_11 & $0.119$ & $0.188$ &  $69$ &  $57.98$ \\
+FunctionRef\_Valid\_12 & $0.097$ & $0.212$ & $115$ & $118.56$
+\end{tabular}
+\caption{Tests with significantly changed execution time}
+\label{table:execution-time-significant-change}
+\end{wraptable}
+
+We filtered for the tests with an increase of at least  $60ms$ absolutely and at the same time $25\%$ relatively.
+this yields only two tests, they are listed in \myref{Table}{table:execution-time-significant-change}.
+Both test programs call functions with other functions as parameter, e.g. \whileyinline{f1(&f2)}.
+The compiler then has to check whether the type of function \whileyinline{f2} is a subtype of the parameter type of \whileyinline{f1}.
+Subtyping on function and method types got more complicated because we have to consider context lifetimes and lifetime parameters.
+Even for programs that do not use lifetimes these checks impose some overhead because of added case distinctions.
+The general increase in execution time can be explained with an increased size for the abstract syntax tree and type representations.
+
+Our implementation ships with 17 new valid and 14 new invalid programs.
+The total execution time for these tests is $2.12$ seconds for the valid and $0.12$ seconds for the invalid programs.
+The test cases also cover the method lookup algorithm with omitted lifetime arguments as discussed in \myref{section}{section:substitution-lookup}.
+None of these tests takes longer than $0.2$ seconds.

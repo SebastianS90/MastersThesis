@@ -1,0 +1,26 @@
+% !TeX root = ../../main.tex
+\begin{tikzpicture}[scale=.8]
+
+  \stacktop{}
+  \separator
+  \cell{}   \cellcomL{\texttt{allocations:}} \coordinate (A) at (currentcell.east);
+  \separator
+  \cell{}   \cellcomL{\texttt{x:}} \coordinate (B) at (currentcell.east);
+  \separator
+  \stackbottom{}
+  \cell[draw=none]{Stack}
+
+  \drawstruct{(5,1)}
+  \structcell{\texttt{length = 1}} \coordinate (C) at (currentcell.north west);
+  \structcell{} \coordinate (D) at (currentcell.east);
+
+  \drawstruct{(8,-2)}
+  \structcell{\textit{variable object}} \coordinate (E) at (currentcell.north west);
+
+  \draw[->] (A) -- ($(C)-(1mm,1mm)$);
+  \draw[->] (B) -- ($(E)-(0,1mm)$);
+  \draw[->] (D) -- ($(E)+(2mm,2mm)$);
+
+  \draw (6,-4) node {Heap};
+
+\end{tikzpicture}

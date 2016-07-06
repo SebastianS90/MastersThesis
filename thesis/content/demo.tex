@@ -1,0 +1,22 @@
+% !TeX root = ../main.tex
+\chapter{Demo of Syntax Highlighting}
+
+\section{Java}
+\javafilec[breakable]{content/demo.java}{java-demo}{Example \java code}
+
+\section{Rust}
+\rustfilec[breakable]{content/demo.rs}{rust-demo}{Example \rust code}
+
+\section{Whiley}
+\whileyfilec[breakable]{content/demo.whiley}{whiley-demo}{Example \whiley code}
+
+\section{References}
+\Lstref{java-demo} - \lstref{rust-demo} - \lstref{whiley-demo}
+
+\section{Grammar}
+\begin{syntax}
+	\syntaxrule{ArithmeticRelationalExpr}{\nonterminal{Expr} \token{<} \nonterminal{Expr}}
+	\syntaxcontinue{\nonterminal{Expr} \token{<=} \nonterminal{Expr}}
+	\syntaxcontinue{\nonterminal{Expr} \token{=>} \nonterminal{Expr}}
+	\syntaxcontinue{\nonterminal{Expr} \token{>} \nonterminal{Expr}}
+\end{syntax}

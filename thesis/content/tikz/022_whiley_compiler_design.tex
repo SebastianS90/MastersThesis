@@ -1,0 +1,67 @@
+% !TeX root = ../../main.tex
+\begin{tikzpicture}[>=stealth',shorten >=1pt]
+\tikzstyle{filebox} = [anchor=south west,rectangle,draw,fill=white,minimum width=25mm,minimum height=2cm]
+\tikzstyle{whileybox} = [filebox,minimum width=23mm,minimum height=2cm]
+\tikzstyle{wyilbox}   = [filebox,minimum width=19mm,minimum height=2cm]
+\tikzstyle{jvmbox}    = [filebox,minimum width=18mm,minimum height=11mm]
+\tikzstyle{cbox}      = [filebox,minimum width=18mm,minimum height=1cm]
+
+\node (whiley3) at (2mm,2mm) [whileybox] {};
+\node (whiley2) at (1mm,1mm) [whileybox] {};
+\node (whiley1) at (0mm,0mm) [whileybox] {};
+\node at (whiley1.north west) [anchor=north west,align=left] {%
+	\scriptsize\whileyinline{method main:}\\%
+	\scriptsize\vspace*{-1mm}\ldots\\%
+	\scriptsize\vspace*{-1mm}\ldots\\%
+	\scriptsize\vspace*{-1mm}\ldots%
+};
+\node[anchor=north] at (whiley1.south) {\footnotesize\texttt{prog.whiley}};
+
+\node (parser) at ($(whiley1.east)+(8mm,0)$) [anchor=west,ellipse,draw,align=center] {%
+	\footnotesize Parsing\\%
+	\footnotesize Type Checker%
+};
+
+\node (wyil3) at ($(parser.east |- whiley1.south west)+(8mm,2mm)$) [wyilbox] {};
+\node (wyil2) at ($(wyil3.south west)-(1mm,1mm)$) [wyilbox] {};
+\node (wyil1) at ($(wyil2.south west)-(1mm,1mm)$) [wyilbox] {};
+\node at (wyil1) [align=center] {%
+	\footnotesize WyIL\\%
+	\footnotesize bytecode%
+};
+\node (wyilcaption) at (wyil1.south) [anchor=north] {\footnotesize\texttt{prog.wyil}};
+
+\node (verifier) at ($(wyilcaption.south)+(0,-6mm)$) [anchor=north,ellipse,draw] {\footnotesize Verifier};
+
+\node (wyjc) at ($(wyil1.east)+(8mm,8mm)$)  [anchor=west,ellipse,draw,minimum width=2cm] {\footnotesize WyJC};
+
+\node (wycc) at ($(wyil1.east)+(8mm,-12mm)$) [anchor=west,ellipse,draw,minimum width=2cm] {\footnotesize WyCC};
+
+\node (jvm3) at ($(wyjc.east)+(8mm,2mm)$) [jvmbox,anchor=west] {};
+\node (jvm2) at ($(jvm3.south west)-(1mm,1mm)$) [jvmbox] {};
+\node (jvm1) at ($(jvm2.south west)-(1mm,1mm)$) [jvmbox] {};
+\node at (jvm1) [align=center] {%
+	\footnotesize JVM\\%
+	\footnotesize bytecode%
+};
+\node (jvmcaption) at (jvm1.south) [anchor=north] {\footnotesize\texttt{prog.class}};
+
+\node (c3) at ($(wycc.east)+(8mm,2mm)$) [cbox,anchor=west] {};
+\node (c2) at ($(c3.south west)-(1mm,1mm)$) [cbox] {};
+\node (c1) at ($(c2.south west)-(1mm,1mm)$) [cbox] {};
+\node at (c1) {\footnotesize C code};
+\node (ccaption) at (c1.south) [anchor=north] {\footnotesize\texttt{prog.c}};
+
+\draw[->] (whiley3.east |- whiley1.east) -- (parser.west); 
+\draw[->] (parser.east) -- (wyil1.west);
+\draw[->] ($(wyil3.east |- wyil1.east)+(0,1mm)$) -- (wyjc.west);
+\draw[->] ($(wyil3.east |- wyil1.east)-(0,1mm)$) -- (wycc.west);
+\draw[->] (wyjc.east) -- (jvm1.west);
+\draw[->] (wycc.east) -- (c1.west);
+\draw[->] (wyilcaption.south) -- (verifier.north);
+
+\draw [decorate,decoration={brace,amplitude=10pt,mirror},yshift=-3mm]
+($(wycc.west |- ccaption.south)-(1mm,0)$) -- ($(c3.east |- ccaption.south)+(1mm,0)$) node [midway,below=4mm] 
+{\footnotesize backends};
+
+\end{tikzpicture}

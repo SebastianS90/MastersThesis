@@ -1,0 +1,19 @@
+% !TeX root = ../main.tex
+\chapter{Implementation}\label{chapter:implementation}
+
+This chapter provides a detailed view on the different parts of the implementation.
+A broad overview of our design and a discussion among alternative solutions has been given in \myref{chapter}{chapter:design}.
+
+\whiley is an open source project.
+The compiler is written in \java and its source code can be found at \url{https://github.com/Whiley/WhileyCompiler}.
+The lifetime extension covered by this thesis has already been merged into the \texttt{develop} branch.
+A copy of that \texttt{git} repository is also stored on the digital medium attached to this thesis.
+
+The implementation of our lifetime extension comprises a total of 2388 added and 464 removed lines of \java source code, excluding new test cases which add another 549 lines.
+Furthermore, the author of this thesis contributed some independent changes to \whiley, mainly in order to fix bugs discovered while developing the lifetime extension.
+These changes cover additional 665 added and 96 removed\footnote{This number excludes the 5725 removed lines from \url{https://github.com/Whiley/WhileyCompiler/pull/582}. That change removed an explicit list of JUnit test cases and added a parameterized test that runs for all available test programs.} lines.
+
+\myref{Section}{section:parser} presents how we change the parser to accept the new syntax.
+In \myref{section}{section:type-checking}, we extend the type checker to respect lifetimes.
+Method calls and lifetime substitution are presented separately in \myref{section}{section:substitution-and-lookup}.
+\myref{Section}{section:wyil} shows the changes to the intermediate language.

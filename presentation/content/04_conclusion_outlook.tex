@@ -1,0 +1,84 @@
+% !TeX root = ../main.tex
+\section{Conclusion \& Outlook}
+
+\begin{frame}
+	\frametitle{Agenda}
+	\tableofcontents[currentsection,hideallsubsections]
+\end{frame}
+
+\subsection{Conclusion}
+\begin{frame}
+	\frametitle{Conclusion}
+	\begin{itemize}[<+->]
+		\item Design lifetime extension
+		\begin{itemize}
+			\item Lifetime parameters
+			\item Lifetime substitution
+			\item Lifetime argument inference
+			\item Subtyping
+		\end{itemize}
+		\item Implementation
+		\begin{itemize}
+			\item 2388 added and 464 removed lines
+			\item additional: new test cases with 549 lines
+			\item independent bug fixes: 665 added and 96 removed lines
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Goals}
+	\begin{itemize}[<+->]
+		\item Backwards compatibility (as much as possible)
+		\begin{itemize}
+			\item[\checkmark] Yes, except for new keyword \whileyinline{this}
+		\end{itemize}
+		\item Keep the language simple
+		\begin{itemize}
+			\item[\checkmark] Yes, introduced only necessary concepts
+		\end{itemize}
+		\item Develop a basis for memory management without garbage collection
+		\begin{itemize}
+			\item[\checkmark] Next slide!
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+\subsection{Outlook}
+\begin{frame}
+	\frametitle{Outlook: Memory Management}
+	\begin{tikzpicture}[scale=.8]
+		\stacktop{}
+		\separator
+		\cell{}   \cellcomL{\texttt{allocations:}} \coordinate (A) at (currentcell.east);
+		\separator
+		\cell{}   \cellcomL{\texttt{x:}} \coordinate (B) at (currentcell.east);
+		\separator
+		\stackbottom{}
+		\cell[draw=none]{Stack}
+		
+		\drawstruct{(5,1)}
+		\structcell{\texttt{length = 1}} \coordinate (C) at (currentcell.north west);
+		\structcell{} \coordinate (D) at (currentcell.east);
+		
+		\drawstruct{(8,-2)}
+		\structcell{\textit{dynamic object}} \coordinate (E) at (currentcell.north west);
+		
+		\draw[->] (A) -- ($(C)-(2mm,1mm)$);
+		\draw[->] (B) -- ($(E)-(2mm,2mm)$);
+		\draw[->] (D) -- ($(E)+(2mm,2mm)$);
+		
+		\draw (6,-4) node {Heap};
+	\end{tikzpicture}
+\end{frame}
+
+\begin{frame}
+	\begin{center}
+		\LARGE
+		Thank you for your attention!
+
+		\vspace*{1cm}
+		\pause
+		Questions?
+	\end{center}
+\end{frame}

@@ -1,0 +1,150 @@
+% !TeX root = ../main.tex
+\section[Whiley]{What is Whiley?}
+
+\begin{frame}
+	\frametitle{Agenda}
+	\tableofcontents[currentsection,hideothersubsections]
+\end{frame}
+
+\subsection{Verification}
+\begin{frame}
+	\frametitle{What is Whiley?}
+	\begin{itemize}
+		\item Hybrid imperative and functional programming language
+		\item Focus on verification
+\pause
+		\begin{itemize}
+			\item At compile-time
+			\item Ensures absence of exceptions (e.g. \texttt{IndexOutOfBoundsException})
+			\item Verify implementation against provided specification
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+\begin{onlyenv}<1>
+\begin{whileycode}
+function max(int[] input) -> (int result) // 1st index with max. val
+requires |input| > 0
+ensures result >= 0 && result < |input|
+ensures all { j in 0..|input| | input[j] <= input[result] }
+ensures all { j in 0..result  | input[j] <  input[result] }:
+
+
+
+
+
+
+
+
+
+
+//
+\end{whileycode}
+\end{onlyenv}
+\begin{onlyenv}<2>
+\begin{whileycode}
+function max(int[] input) -> (int result) // 1st index with max. val
+requires |input| > 0
+ensures result >= 0 && result < |input|
+ensures all { j in 0..|input| | input[j] <= input[result] }
+ensures all { j in 0..result  | input[j] <  input[result] }:
+    result = 0
+    int i = 0
+    while (i < |input|):
+
+
+
+
+        if input[i] > input[result]:
+            result = i
+        i = i + 1
+    return result
+\end{whileycode}
+\end{onlyenv}
+\begin{onlyenv}<3>
+\begin{whileycode}
+function max(int[] input) -> (int result) // 1st index with max. val
+requires |input| > 0
+ensures result >= 0 && result < |input|
+ensures all { j in 0..|input| | input[j] <= input[result] }
+ensures all { j in 0..result  | input[j] <  input[result] }:
+    result = 0
+    int i = 0
+    while (i < |input|)
+    where i >= 0 && i <= |input|
+    where result >= 0 && result < |input| && result <= i
+    where all { j in 0..i       | input[j] <= input[result] }
+    where all { j in 0..result  | input[j] <  input[result] }:
+        if input[i] > input[result]:
+            result = i
+        i = i + 1
+    return result
+\end{whileycode}
+\end{onlyenv}
+\end{frame}
+
+\subsection{Type System}
+\begin{frame}
+	\frametitle{Type System Features}
+	\begin{itemize}
+		\item<+-> Union Types: \whileyinline{int|bool x = true}
+		\item<+-> Negation Types: \whileyinline{!bool x = 42}
+		\item<+-> Structural (Sub-)Typing
+		%\begin{itemize}
+		%	\item \whileyinline{{int x, int y} rec1 = {y: 7, x: 8}}
+		%	\item \whileyinline{{int y, int x} rec2 = {x: 8, y: 7}}
+		%\end{itemize}
+		\item<+-> Recursive Types
+		\begin{itemize}
+			\item \whileyinline{type LinkedList is null|{int head, LinkedList tail}}
+			\item<+-> \whileyinline{type A is B|null}\\
+			\whileyinline{type B is {int head, A tail}}
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+%\begin{frame}[fragile]
+%\frametitle{Flow Typing}
+%\begin{whileycode}
+%int|null x = //...
+%if (x is null):
+%	x = 0
+%else:
+%	x = x + 1
+%\end{whileycode}
+%\end{frame}
+
+
+\subsection{Heap Memory}
+\begin{frame}
+	\frametitle{Heap Memory}
+	\begin{itemize}[<+->]
+		\item Reference Types: \whileyinline{&int}, \whileyinline{&LinkedList}, \ldots
+		\item Allocation: \whileyinline{new} \texttt{Expression}
+		\begin{itemize}
+			\item \whileyinline{&int x = new 5}
+			\item \alert{Problem}: How to deallocate?
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Deallocation}
+	\begin{block}{Options}
+		\pause
+		\begin{itemize}[<+->]
+			\item Manual by programmer (\texttt{free} operator)? \only<+->{\alert{Unsafe!}}
+			\item Using a Garbage Collector? \only<+->{Safe, but \alert{runtime overhead!}}
+			\item Static Analysis!
+		\end{itemize}
+	\end{block}
+	\begin{uncoverenv}<+->
+	\begin{block}{Current Solution}
+		\begin{itemize}
+		\item Whiley to JVM: Garbage Collector
+		\item Whiley to C: no deallocation
+		\end{itemize}
+	\end{block}
+	\end{uncoverenv}
+\end{frame}

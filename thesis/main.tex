@@ -1,0 +1,255 @@
+\documentclass[%
+	11pt,a4paper,twoside,%
+	%parskip=half,% half a line space between two paragraphs instead of indent
+	listof=totoc,% list of figures etc. in table of contents
+	bibliography=totocnumbered,% bibliography in table of contents, with a number (letter) assigned to it
+	headsepline,% line between headline and page
+]{scrreprt}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[ngerman,english]{babel}% multiple languages with foreignlanguage
+\selectlanguage{english}
+\usepackage{geometry}% needed for margins on cover page
+\usepackage[automark]{scrlayer-scrpage}% headline and footer
+\usepackage{microtype}% avoids overfull hbox
+\interfootnotelinepenalty=10000% don't add a page break in footers
+\makeatletter% provide title, author etc. in \@title etc.
+\usepackage{scrhack}% needed for float/listings with KOMA script
+\usepackage{graphicx}% include images
+\usepackage[dvipsnames]{xcolor}% colors: http://mirror.aut.ac.nz/CTAN/macros/latex/contrib/xcolor/xcolor.pdf
+\usepackage{courier} % nicer monospace font
+
+% -----------------------------------------------------------------
+
+% Switches for output generation
+\newif\ifprintable
+%true: twosided layout, do not emphasize clickable references
+%false: single sided layout, emphasize clickable references
+
+\newif\ifcolored
+%true: use colored variant of uni logo, use colors in code listings
+%false: use grayscale colors
+
+%<OUTPUT-SETTINGS>
+\printabletrue
+\coloredtrue
+%</OUTPUT-SETTINGS>
+
+% -----------------------------------------------------------------
+
+% Listings
+\usepackage{tcolorbox}
+\tcbuselibrary{minted}
+\tcbuselibrary{skins}
+\tcbuselibrary{breakable}
+\ifcolored
+	\usemintedstyle{mythesis}
+\else
+	\usemintedstyle{mythesisbw}
+\fi
+\def\mytcboptions{%
+	sharp corners=all,% no round corners, please!
+	boxrule=0.3mm,% thickness of border
+	top=0pt,
+	bottom=0pt,
+	%
+	% title is used as caption
+	coltitle=black,% caption should be black
+	attach boxed title to bottom left,% magic to get it to the bottom
+	boxed title style={%
+		enhanced,size=minimal,%
+		opacityfill=0,frame hidden,% no box around caption
+		top=2mm,% space between actual box and caption
+		bottom=1mm,% some additional space before text continues
+	},%
+}
+\def\mymintedoptions{%
+	fontsize=\small,% smaller font = less space used
+	tabsize=2,% save some more space
+	breaklines,% allow to break lines after spaces
+	stripall,% strip all leading and trailing whitespace from the input
+}
+
+% \definetcblisting{language}{background color}{frame color}{line numbers background}
+% -> \begin{languagecode}[tcb options]...\end{languagecode}
+% -> \begin{languagecodec}[tcb options]{label}{title}...\end{languagecode}
+% -> \languagefile[tcb options]{filename}
+% -> \languagefilet[tcb options]{filename}{label}{title}
+% -> \languageinline{code}
+\input{listingdefinitionhelper}
+\ifcolored
+	\definetcblisting{java}    {red!5!white}  {red!75!black}  {red!50!black!20!white}
+	\definetcblisting{rust}   {blue!5!white} {blue!75!black} {blue!50!black!20!white}
+	\definetcblisting{whiley}{green!5!white}{green!50!black}{green!50!black!20!white}
+\else
+	\definetcblisting{java}  {black!5!white}{black}{black!20!white}
+	\definetcblisting{rust}  {black!5!white}{black}{black!20!white}
+	\definetcblisting{whiley}{black!5!white}{black}{black!20!white}
+\fi
+
+% Syntax diagrams
+\input{grammars}
+
+% Figure and table captions
+\usepackage{chngcntr}
+\counterwithout{figure}{chapter}
+\counterwithout{table}{chapter}
+\counterwithout{footnote}{chapter}
+\renewcommand*{\figureformat}{\figurename~\thefigure}
+\renewcommand*{\tableformat}{\tablename~\thetable}
+\usepackage[%
+	labelfont=bf,%
+	font=footnotesize,%
+	justification=raggedright,%
+	singlelinecheck=false,%
+	skip=2mm%
+]{caption}
+
+% -----------------------------------------------------------------
+
+%\usepackage{lipsum}
+%\usepackage{todonotes}
+\usepackage{xspace}
+\usepackage{wrapfig}
+\usepackage{subcaption}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows,automata,calc}
+
+\usepackage[nocolor]{drawstack}
+
+\usepackage{csquotes}
+\usepackage{placeins}% for FloatBarrier
+\usepackage{bookmark}% allow to add preface entries to pdf index
+\usepackage{hyperref}% allows to click on references and adds meta information to pdf file
+% NOTE: hyperref should be the last package!
+
+% -----------------------------------------------------------------
+
+\newcommand{\whiley}{\emph{Whiley}\xspace}
+\newcommand{\rust}{\emph{Rust}\xspace}
+\newcommand{\java}{\emph{Java}\xspace}
+
+\newcommand{\myref}[2]{\hyperref[#2]{#1~\ref*{#2}}}
+
+\usepackage{amsthm}
+\newtheorem{definition}{Definition}
+\newtheorem{invariant}{Invariant}
+
+% -----------------------------------------------------------------
+
+\date{30.05.2016}
+\title{Lifetime Analysis for Whiley}
+\author{Sebastian Schweizer}
+\newcommand{\authoremail}{schweizer@cs.uni-kl.de}
+\newcommand{\primaryexaminer}{Prof. Dr. Arnd Poetzsch-Heffter}
+\newcommand{\secondaryexaminer}{Dr. David Pearce}
+
+% -----------------------------------------------------------------
+
+% meta information for the pdf file
+\hypersetup{%
+	pdftitle={\@title},%
+	pdfauthor={\@author},%
+	linktoc=all,% table of contents: also link page numbers
+	bookmarksnumbered,% entries in pdf index are numbered
+}
+
+% clickable references
+\ifprintable
+	\hypersetup{%
+		hidelinks, % do not emphasize references
+	}
+\else
+	\hypersetup{%
+		colorlinks=true, % emphasize references (colored insted of boxes)
+		linkcolor=Red, % internal references to figures etc.
+		citecolor=Green, % citation reference to bibliography
+		filecolor=Magenta, % external files
+		urlcolor=RoyalBlue, % external urls
+	}
+\fi
+
+% -----------------------------------------------------------------
+
+% page layout
+\clearscrheadings
+\clearscrplain
+\ifprintable
+	\ohead{\headmark} % headline in outer position
+	\ofoot*{\pagemark} % page number in outer position
+\else
+	\chead{\leftmark} % headline left
+	\cfoot*{\pagemark} % page number centered
+
+	% center pages
+	\addtolength{\oddsidemargin}{\evensidemargin}%
+	\setlength {\evensidemargin}{0.5\oddsidemargin}%
+	\setlength {\oddsidemargin}{\evensidemargin}%
+\fi
+\pagestyle{scrplain}
+
+% -----------------------------------------------------------------
+
+\begin{document}
+
+% cover page
+\pagenumbering{Roman}
+\newgeometry{left=3cm,right=3cm,top=3cm,bottom=3cm}
+\begin{titlepage}
+	\setlength{\parskip}{0pt}
+	\begin{center}
+		\input{content/000_cover}
+	\end{center}
+\end{titlepage}
+\restoregeometry
+\cleardoublepage
+
+% -----------------------------------------------------------------
+
+% Abstract
+\pagenumbering{roman}
+\hypertarget{abstract}{}
+\bookmark[level=0,dest=abstract]{Abstract}
+\chapter*{\@title}
+\input{content/001_abstract}
+\cleardoublepage
+
+% Acknowledgments
+\hypertarget{acknowledgments}{}
+\bookmark[level=0,dest=acknowledgments]{Acknowledgments}
+\chapter*{Acknowledgments}
+\input{content/002_acknowledgments}
+\cleardoublepage
+
+% Statutory declaration
+\input{content/003_statutory}
+\cleardoublepage
+
+% -----------------------------------------------------------------
+
+% add headline to pages
+\pagestyle{scrheadings}
+
+\hypertarget{toc}{}
+\bookmark[level=0,dest=toc]{\contentsname}
+\tableofcontents
+\cleardoublepage
+
+% -----------------------------------------------------------------
+
+% Content
+\pagenumbering{arabic}
+\input{content/009_content}
+
+% Appendix
+\cleardoublepage
+\appendix
+\input{content/999_appendix}
+
+% List of {fgures, listings, ...} and bibliography
+\cleardoublepage
+\bibliographystyle{acm}
+\bibliography{references}
+
+\end{document}

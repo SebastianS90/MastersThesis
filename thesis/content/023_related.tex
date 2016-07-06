@@ -1,0 +1,57 @@
+% !TeX root = ../main.tex
+\section{Related Work}\label{section:background-related}
+
+This section provides a rough overview of work related to ownership systems, automatic memory management without garbage collection, and verification.
+
+\subsection{Ownership}
+Work on ownership models dates back to 1998.
+Clarke et al. \cite{Clarke:1998:OTF:286936.286947} presented a type system featuring ownership types to control aliasing.
+
+Boyapati et al. \cite{Boyapati:2003:OTS:781131.781168} extend the Real-Time Specification for Java (RTSJ) and introduce a static type system using ownership types.
+It guarantees that the runtime checks ensuring memory safety in RTSJ will not fail, thus allowing to remove these checks.
+
+In order to allow for parametric ownership types, Potanin et al. \cite{Potanin:2006:GOG:1167473.1167500} developed an ownership system for Java 5, combining both generic types and generic ownership.
+
+
+\subsection{Region-Based Memory Management}
+Grossman et al. developed a programming language called \emph{Cyclone} \cite{cyclone2002}.
+It is an extension of \emph{C} that provides safe memory management.
+The unsafe \texttt{free} operator is removed.
+The memory is divided into several \emph{regions}.
+Each region corresponds to a block in the program code.
+When the control flow leaves the block, then its region is freed automatically.
+Intraprocedural static analysis on region annotations in pointer types ensure memory safety.
+
+Instead of relying on the programmer to annotate the program with regions, \cite{RegionJava} proposes an interprocedural region analysis algorithm that reads a \java program and generates an equivalent program with region-based memory managed support.
+
+These region-based techniques come with the disadvantage that only a whole region can be freed, deallocation of a single object inside the region is not permitted.
+Region-based memory management therefore utilizes more memory than garbage collection \cite{RegionJava,PoolAllocation}.
+Dhurjati et al. present an interprocedural analysis for \emph{C} programs that manages memory in \emph{pools} \cite{PoolAllocation}.
+Explicit \texttt{free} commands are allowed if they do not violate the safety constraints.
+Otherwise the command will be removed, but the memory is still freed when the whole pool gets deallocated.
+
+
+\subsection{Alias Analysis}
+Aliasing is a key problem in memory management and verification.
+We say that a reference is an alias if there are multiple references to the same memory location.
+The referenced memory can be mutated through any of these aliases, which affects also the other references.
+Furthermore, deallocating the memory while there are still aliases to it leads to dangling pointers.
+
+\emph{AliasJava} \cite{Aldrich:2002:AAP:582419.582448} is an annotation system for Java.
+It extends the type system to explicitly annotate to what extend references can be aliased.
+These annotations enable programmers to better reason about aliasing.
+Furthermore, the authors present an algorithm that can automatically infer suitable annotations.
+
+Brandauer et al. \cite{Brandauer:2015:DDF:2814270.2814280} recently proposed \emph{Disjointness Domains} as a system for fine-grained alias control.
+All references belong to these domains that impose restrictions on aliasing within a single domain and among several domains.
+
+
+\subsection{Separation Logic}
+\emph{Separation logic} \cite{reynolds2002separation} is an extension of \emph{Hoare logic} \cite{Hoare:1969:ABC:363235.363259}.
+It adds a way to reason about heap memory.
+We can make statements about disjointness of heap regions which basically is the absence of aliasing between both regions.
+Furthermore, we can reason about the actual values stored on the heap.
+
+Tuch et al. \cite{Tuch:2007:TBS:1190216.1190234} establish a formal model for a subset of the \emph{C} programming language.
+They use the Isabelle/HOL theorem prover to reason about programs with pointers.
+A challenge is to model the real behavior of finite integers with overflow semantics.

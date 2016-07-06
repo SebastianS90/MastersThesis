@@ -1,0 +1,14 @@
+% !TeX root = ../main.tex
+\chapter{Background}\label{chapter:background}
+\rust is a multi-paradigm programming language.
+It claims to be \enquote{a systems programming language that runs blazingly fast, prevents segmentation faults, and guarantees thread safety} \cite{RustHomepage}.
+To achieve this goal, \rust avoids garbage collection and other runtime overhead.
+Instead, static analysis as well as a notion of \emph{ownership} and \emph{lifetimes} is used to ensure memory safety.
+
+\whiley also is a mutli-paradigm compiled programming language.
+A major feature is \emph{verification}: programmers can provide specifications for all functions and the compiler checks that they are met by the actual implementation.
+\whiley uses a structural type system and features \emph{flow typing}.
+
+For our contribution in this thesis we adapt \rust's notion of lifetimes to introduce a similar approach to the \whiley language.
+As basic knowledge of both languages and their differences is essential to understand our work, this chapter provides a brief introduction to \rust (\myref{section}{section:background-rust}) and \whiley (\myref{section}{section:background-whiley}).
+In \ref{section:background-related}, we present some work related to static analysis techniques.

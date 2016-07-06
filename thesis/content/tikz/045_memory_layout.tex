@@ -1,0 +1,12 @@
+% !TeX root = ../../main.tex
+\begin{tikzpicture}[scale=.8]
+	\stacktop{}
+	\separator
+	\cell{\texttt{1}} \coordinate (val) at (currentcell.west);
+	\separator
+	\cell{} \cellcomL{\texttt{x:}} \coordinate (x) at (currentcell.east);
+	\separator
+	\stackbottom{}
+
+	\draw[->] (x) -- (val);
+\end{tikzpicture}

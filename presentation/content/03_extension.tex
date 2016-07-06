@@ -1,0 +1,215 @@
+% !TeX root = ../main.tex
+\section[Extension]{Lifetime Extension for Whiley}
+
+\begin{frame}
+	\frametitle{Agenda}
+	\tableofcontents[currentsection,hideothersubsections]
+\end{frame}
+
+\subsection{Goals}
+\begin{frame}
+	\frametitle{Goals}
+	\begin{itemize}[<+->]
+		\item Backwards compatibility (as much as possible)
+		\item Keep the language simple
+		\item Develop a basis for memory management without garbage collection
+		\begin{itemize}
+			\item Future improvement of the \emph{Whiley to C Compiler} (needed for embedded systems)
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+\subsection{Design}
+\begin{frame}
+	\frametitle{Designing the Extension}
+	\begin{itemize}[<+->]
+		\item Reference Type annotated with (optional) lifetime: \whileyinline{&a:T}
+		\item Allocation operator annotated with (optional) lifetime: \whileyinline{a:new expr}
+		\item Possible lifetimes: \whileyinline{this}, \whileyinline{*}, \whileyinline{a}
+		\item Named Blocks to declare lifetime names
+	\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Example}
+\begin{whileycode}
+method main():
+	&this:int x = this:new 1
+
+	a:
+		&a:int y = a:new 2
+		y = x
+\end{whileycode}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Lifetime Invariant}
+	\begin{block}{Invariant}
+		An initialized reference of type \whileyinline{&a:T} points to a portion of memory that will be alive at least until the program's control flow leaves the region described by lifetime \whileyinline{a}.
+	\end{block}
+
+	\begin{definition}[Liveness]
+		A memory location is \emph{alive} if and only if:
+		\begin{itemize}
+			\item it has been allocated using the \whileyinline{new} operator and
+			\item it has not yet been freed by the runtime system
+		\end{itemize}
+	\end{definition}
+\end{frame}
+
+\begin{frame}[fragile]
+	\frametitle{Outlives Relation}
+	\begin{definition}[Outlives]
+		A lifetime \whileyinline{a} outlives lifetime \whileyinline{b} (denoted \whileyinline{a} $\succ$ \whileyinline{b}) if the region described by \whileyinline{b} is fully contained in the region described by \whileyinline{a}.
+	\end{definition}
+	\pause
+	\begin{block}{Example}
+		\begin{columns}
+			\begin{column}{0.45\linewidth}
+\begin{whileycode}
+method m():
+	a:
+		// ...
+	b:
+		c:
+			// ...
+\end{whileycode}
+			\end{column}
+			\begin{column}{0.5\linewidth}
+				\pause
+				\begin{itemize}
+					\item \whileyinline{this} $\succ$ \whileyinline{a}
+					\item \whileyinline{this} $\succ$ \whileyinline{b} $\succ$ \whileyinline{c}
+				\end{itemize}
+			\end{column}
+		\end{columns}
+	\end{block}
+\end{frame}
+
+\subsection{Subtyping}
+\begin{frame}[fragile]
+	\frametitle{Subtyping}
+	\begin{block}{Subtyping of Reference Types}
+		A type \whileyinline{&a:A} is subtype of \whileyinline{&b:B} if and only if
+		\begin{itemize}
+			\item lifetime \whileyinline{a} outlives lifetime \whileyinline{b} and
+			\item \whileyinline{A} and \whileyinline{B} describe the same type
+		\end{itemize}
+	\end{block}
+	\pause
+	\begin{block}{Why the \emph{same} type?}
+\begin{whileycode}
+method m():
+	&int x = new 5
+	&(int|null) y = x
+	*y = null
+\end{whileycode}
+	\end{block}
+\end{frame}
+
+\subsection{Lifetime Parameters}
+\begin{frame}
+	\frametitle{Lifetime Parameters}
+	\begin{itemize}
+		\item Method with reference types as parameters
+		\item What should be the lifetime?
+		\item<2> Use parametric lifetimes
+	\end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Lifetime Parameters}
+\begin{whileycode}
+method <a> m(&a:int x) -> &a:int:
+	if ((*x) == 42):
+		return x
+	else:
+		return a:new 42
+
+method main():
+	&this:int x = this:new 1
+	&this:int y = m<this>(x)
+\end{whileycode}
+\end{frame}
+
+\subsection{Lifetime Substitution}
+\begin{frame}
+	\frametitle{Lifetime Substitution}
+	\begin{itemize}
+		\item Consider the method \whileyinline{method <a> m(&a:int x) -> &a:int:}
+		\item Call it with parameter of type \whileyinline{&this:int}
+		\item What should be the return type?
+		\item<2-> Substitute lifetime parameter \whileyinline{a} with lifetime argument \whileyinline{this}, get \whileyinline{&this:int}.
+		\item<3-> Capturing?
+	\end{itemize}
+\end{frame}
+
+\begin{frame}
+	\whileyinline{type mymethod is method<a>(&*:mymethod)->(&a:mymethod)}
+
+	\vspace*{2mm}
+	\pause
+	\begin{minipage}{0.4\linewidth}
+		\begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=2.8cm,semithick,initial text={\whileyinline{mymethod}},font=\small]
+		\tikzstyle{every state}=[draw]
+		
+		\node[initial above,state] (A)                     {\whileyinline{method<a>}};
+		\node[state]               (B) [below left  of=A]  {\whileyinline{&*:}};
+		\node[state]               (C) [below right of=A]  {\whileyinline{&a:}};
+		
+		\useasboundingbox ($(current bounding box.south west)-(4mm,2mm)$) rectangle ($(current bounding box.north east)+(4mm,0)$);
+		
+		\path (A) edge node [sloped, anchor=center, above] {param} (B)
+		          edge node [sloped, anchor=center, above] {return} (C)
+		      (B) edge [out=-135, in=157, looseness=1.2] (A)
+		      (C) edge [out=-45, in=23, looseness=1.2] (A);
+		\end{tikzpicture}
+	\end{minipage}
+	\pause
+	\begin{minipage}{0.25\linewidth}
+		\begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=2.2cm,semithick,initial text={},font=\small]
+		\tikzstyle{every state}=[draw]
+		
+		\node[initial above,state] (A)               {\whileyinline{&a:}};
+		\node[state]               (B) [below of=A]  {\whileyinline{method<a>}};
+		\node[state]               (C) [below of=B]  {\whileyinline{&*:}};
+		
+		\useasboundingbox ($(current bounding box.south west)-(6mm,2mm)$) rectangle ($(current bounding box.north east)+(7mm,0)$);
+		
+		\path (A) edge (B)
+		      (B) edge node [swap, pos=0.3] {param} (C)
+		          edge [out=-45, in=23, looseness=1] node [swap, pos=0.1, xshift=-3mm] {return} (A)
+		      (C) edge [out=-135, in=157, looseness=1] (B);
+		\end{tikzpicture}
+	\end{minipage}
+	\pause
+	\begin{minipage}{0.3\linewidth}
+		\begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=2.2cm,semithick,initial text={},font=\footnotesize]
+		\tikzstyle{every state}=[draw]
+		
+		\node[initial above,state] (A)               {\whileyinline{&this:}};
+		\node[state]               (B) [below of=A]  {\whileyinline{method<a>}};
+		\node[state]               (C) [below left  of=B]  {\whileyinline{&*:}};
+		\node[state]               (D) [below right of=B]  {\whileyinline{&a:}};
+		
+		\useasboundingbox ($(current bounding box.south west)-(4mm,2mm)$) rectangle ($(current bounding box.north east)+(4mm,0)$);
+		
+		\path (A) edge (B)
+		      (B) edge node [pos=0.3] {p} (C)
+		          edge node [swap, pos=0.3] {r} (D)
+		      (C) edge [out=-135, in=157, looseness=1.2] (B)
+		      (D) edge [out=-45, in=23, looseness=1.2] (B);
+		\end{tikzpicture}
+	\end{minipage}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Algorithm}
+	\begin{itemize}[<+->]
+		\item Recursively copy all states (depth-first)
+		\item Thereby apply the substitution
+		\item When entering a method type, do not substitute the lifetime parameters in subgraph
+		\item Reuse already copied state if it ignores the same lifetime parameters
+		\item $n$ states and $m$ lifetimes $\Rightarrow$ maximal $n * 2^m$ states in substituted type
+	\end{itemize}
+\end{frame}

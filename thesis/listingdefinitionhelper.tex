@@ -1,0 +1,66 @@
+% !TeX root = main.tex
+
+% #1 = options, #2 = language
+\newcommand{\definetcblistinghelper}[2]{%
+	\newtcblisting{#2code}[1][]{%
+		#1,%
+		##1,%
+	}%
+	\newtcblisting[use counter=listing]{#2codec}[3][]{%
+		label=listing:##2,%
+		title=\textbf{Listing~\thetcbcounter:} ##3,%
+		#1,%
+		##1,%
+	}%
+	\newtcbinputlisting{#2file}[2][]{%
+		listing file={##2},%
+		#1,%
+		##1,%
+	}%
+	\newtcbinputlisting[use counter=listing]{#2filec}[4][]{%
+		listing file={##2},%
+		label=listing:##3,%
+		title=\textbf{Listing~\thetcbcounter:} ##4,%
+		#1,%
+		##1,%
+	}%
+	\newmintinline[#2inline]{#2}{}%
+}
+
+% reference to listing with lower case or custom word
+\newcommand{\lstref}[2][listing]{%
+	\ifx&#1&%
+		\ref*{listing:#2}%
+	\else%
+		\myref{#1}{listing:#2}%
+	\fi%
+}
+
+% reference to listing with upper case
+\newcommand{\Lstref}[1]{\lstref[Listing]{#1}}
+
+% #1 = language, #2 = background color, #3 = frame color, #4 = line numbers background
+\newcommand{\definetcblisting}[4]{%
+	\expandafter\expandafter\expandafter%
+	\definetcblistinghelper\expandafter\expandafter\expandafter{\expandafter%
+		\mytcboptions\expandafter,\expandafter%
+		m\expandafter i\expandafter n\expandafter t\expandafter e\expandafter d\expandafter\space\expandafter%
+		o\expandafter p\expandafter t\expandafter i\expandafter o\expandafter n\expandafter s\expandafter =\expandafter{%
+			\mymintedoptions,%
+			linenos,% line numbers
+			numbersep=3mm,% gap between numbers and start of line
+		},%
+		listing engine=minted,%
+		minted language=#1,%
+		listing only,%
+		colback=#2,%
+		colframe=#3,%
+		enhanced,%
+		left=6mm,% should be the same as xshift in overlay
+		overlay={%
+			\begin{tcbclipinterior}%
+				\fill[#4] (frame.south west) rectangle ([xshift=6mm]frame.north west);%
+				\draw[#3,thick] ([xshift=6mm]frame.south west) -- ([xshift=6mm]frame.north west);%
+			\end{tcbclipinterior}},%
+	}{#1}%
+}

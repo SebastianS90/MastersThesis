@@ -1,0 +1,116 @@
+% !TeX root = ../main.tex
+\chapter{Conclusion}\label{chapter:conclusion}
+
+This chapter briefly revisits the contributions from this thesis.
+Furthermore, we provide some options for future extensions of \whiley.
+We outline how these extensions are affected by and possibly can benefit from our work on lifetimes.
+Afterwards, we draw our final conclusions.
+
+
+\section{Contribution}
+\begin{itemize}
+\item We extended the \whiley language and introduced the concept of lifetimes.
+Our extension fits to \whiley's environment.
+We had to consider structural typing and flow typing, both features are not present in \rust.
+We kept the \whiley language as simple as possible and mostly backwards-compatibility, with keyword \whileyinline{this} being the only breaking change.
+We gave a discussion on our design decisions and found a solution that can be implemented as part of this thesis.
+
+\item We presented all changes to the \whiley syntax.
+We gave formal specifications for each change such that they can be easily incorporated into the \emph{Whiley Language Specification}.
+The given examples help especially those readers who are unfamiliar with \whiley to understand each change.
+
+\item We implemented the lifetime extension for the \whiley compiler which is written in \java.
+Our implementation covers all aspects that are presented in this thesis.
+We can now compile and run \whiley programs with lifetimes and the compiler statically checks all defined constraints.
+Main challenges were the substitution algorithm for subtyping, the algorithm for method lookup, and the handling of lambda expressions.
+Our implementation has been merged and released as part of \whiley v0.3.40\footnote{\url{http://whiley.org/2016/05/28/whiley-v0-3-40-released/}}.
+
+\item We documented the implementation in \myref{chapter}{chapter:implementation}.
+Example programs, figures and further explanation aim to improve understandability of the algorithms in our implementation.
+
+\item We outlined a possible future extension for the \whiley compiler backends that utilizes lifetime information for automatic and safe memory management.
+The presented technique can be used to greatly improve the \emph{Whiley to C compiler} (though actually doing this remains as future work).
+
+\item Our implementation ships with several additional test cases, covering valid and invalid programs.
+They demonstrate expressiveness of our lifetime extension and are a good indication of correctness of our implementation.
+\end{itemize}
+
+
+\section{Future Work}
+\subsection*{Embedded Devices and Memory Management}
+One main reason for porting the idea of lifetimes from \rust to \whiley was to provide a basis for automatic and safe memory management without garbage collection.
+Previous work on compiling \whiley programs to embedded devices could not deallocate dynamically allocated memory \cite{Matt}.
+In \myref{section}{section:evaluation-memory-management}, we presented a technique how a \whiley compiler backend can use lifetime information for this purpose.
+
+
+\subsection*{Parametric Type Declarations}
+There are two main reasons for type declarations in \whiley:
+they shorten programs because we can use the type's name instead of its possibly long definition, and more importantly, they allow to define recursive types.
+There is currently no way to declare types with parametric lifetimes.
+For example, it might be desirable to declare a type for linked lists where all components are connected using references of the same lifetime:
+
+\begin{whileycode}
+type LinkedList<a> is null | &a:{int: head, LinkedList tail}
+method <a> add(LinkedList<a> l, int x):
+	// should modify l and append x
+method main:
+	LinkedList<this> l = this:new {head: 2, null}
+	add(l, 4)
+\end{whileycode}
+
+The syntax \whileyinline{LinkedList<a>} is not yet supported.
+A future extension could add support for parametric lifetimes together with parametric types, i.e. allowing to define one \whileyinline{LinkedList} that can be instantiated for \whileyinline{int} and \whileyinline{bool} types as \whileyinline{head}.
+
+
+\subsection*{Inference}
+Some programming languages allow to declare variables without specifying the type explicitly, the type will then be inferred from the remaining program.
+\rust is one of these languages.
+Type inference can speed up programming, because there is less code that has to be written.
+On the other hand, explicitly specified types can improve understandability of programs.
+
+Our implementation is able to infer suitable lifetime arguments for method invocations as part of the method lookup algorithm.
+But we currently require the programmer to specify lifetimes on reference types and when using the \whileyinline{new} operator.
+If no lifetime is given, then the default lifetime \whileyinline{*} is assumed.
+It might be desirable for some places to omit an explicit lifetime annotation and automatically infer a better solution.
+
+To benefit from the memory management strategy outlined in \myref{section}{section:evaluation-memory-management}, we should avoid \whileyinline{*} and use smaller lifetimes when possible.
+First of all, the lifetime in a \whileyinline{new} expression can be chosen as the smallest lifetime in scope such that the expression still meets the expected type.
+An assignment like \whileyinline{&this:int x = new 1} should allocate an integer of lifetime \whileyinline{this} and not \whileyinline{*}.
+But inferring the expected type might not be possible if the expression is an argument for a method call:
+with overloading, the method to chose and therefore the expected parameter types depend on the provided argument types.
+Furthermore, lifetime parameters without lifetime arguments might prevent such a type inference for the method arguments.
+
+For reference types without specified lifetime we currently assume lifetime \whileyinline{*}.
+In some cases it is possible to change these lifetimes to \whileyinline{this}, in particular when the method's parameter and return types do not contain any references.
+
+\begin{sloppypar}
+Another possible optimization affects method signatures:
+a method declared as \whileyinline{method m(&int x, &int y) -> &int} accepts two references of type \whileyinline{&*:int} and returns such a reference.
+Depending on the method body, it might be possible to change the signature to \whileyinline{method <a> m(&a:int x, &a:int y) -> &a:int}.
+This change does not affect the caller:
+the compiler is able to find a suitable lifetime argument for \whileyinline{a}.
+It can be \whileyinline{*}, then the change does not have any effect.
+But the compiler might also be able to type-check the method call with smaller lifetimes for \whileyinline{a}, e.g. the caller's method body denoted by \whileyinline{this}.
+\end{sloppypar}
+
+
+\subsection*{Concurrency}
+As of the time of writing, \whiley does not yet provide concurrency.
+The challenge is to support concurrency in a safe way such that data races and runtime faults are avoided, and that it is still possible to verify programs easily.
+
+Verifying programs with shared memory is non-trivial.
+The safe core of the \rust language uses communication channels instead of shared memory.
+\rust additionally provides some unsafe operations.
+They are used in libraries that expose a safe interface for accessing shared memory only via mutual exclusion locks.
+
+We can reason about shared memory using \emph{Concurrent Separation Logic} as proposed by O’Hearn \cite{o2007resources}.
+The main challenge here is to find suitable partitions of the heap to establish a proof.
+It seems to be difficult to find an algorithm that automatically verifies programs without a lot of work done by the programmer.
+
+
+\section{Conclusions}
+The goal of this thesis was to design and implement a concept of lifetimes for \whiley.
+This has been achieved and our added test cases demonstrate that the implementation is actually working.
+
+Furthermore, we hoped that a lifetime system can optimize memory management and in particular remove the dependency on garbage collection.
+As shown in the evaluation chapter, our lifetime extension successfully satisfies that goal.

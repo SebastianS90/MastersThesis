@@ -1,0 +1,86 @@
+% !TeX root = ../main.tex
+\section{Memory Management}\label{section:evaluation-memory-management}
+
+One goal of introducing lifetimes in \whiley is to provide a basis for improving memory management.
+In particular, we want to allow for deallocating dynamically allocated memory without garbage collection.
+
+We establish here a short study on how our lifetime extension can be used for memory management.
+This is especially interesting for the \whiley compiler backend that generates \emph{C} code because it currently cannot deallocate dynamically allocated memory.
+Some parts of the presented work can also be implemented in the \emph{Whiley to Java Compiler}, but the crucial step of deallocating memory is not possible in the JVM because it relies on garbage collection.
+
+The tactic presented in the following avoids garbage collection.
+Memory that is allocated with a lifetime other than \whileyinline{*} will be deallocated automatically.
+For memory allocated with \whileyinline{*}, we rely on reference counting and accept that cyclic structures cannot be freed without manually breaking the cycles.
+This also holds for \rust \cite{RustCycles}.
+
+A program's memory is divided into the \emph{stack} and the \emph{heap}.
+The stack contains local variables and management information to organize method calls.
+The heap contains dynamically managed data.
+Data on the stack is addressed as a statically known offset to the current stack pointer.
+This imposes the constraint that the size of these objects must be known at compile-time.
+This holds for primitive types like booleans or 32-bit integers.
+Also arrays of these types with a known length have a known size, but we cannot calculate the size of an array with unknown length.
+
+Consider the following program:
+
+\begin{whileycode}
+type u8 is int x where 0 <= x && x < 256
+method main():
+	&this:u8 x = this:new 1
+	m(x) // method<a>(&a:u8)
+	// ...
+\end{whileycode}
+
+\begin{wrapfigure}{o}{0.3\linewidth}
+\input{content/tikz/045_memory_layout}
+\caption{Stack Layout}
+\label{figure:memory-layout}
+\end{wrapfigure}
+
+\noindent We define a type \whileyinline{u8} for 8 bit unsigned integers, because \whiley's type \whileyinline{int} is not bounded in size.
+We allocate an integer and pass its pointer \whileyinline{x} to a method \whileyinline{m}.
+That method can then modify the referenced value and \whileyinline{main} can see the changes afterwards.
+We can allocate the integer directly on the stack.
+\myref{Figure}{figure:memory-layout} sketches a possible stack layout for method \whileyinline{main}.
+\whileyinline{x} actually contains the memory address of the cell pointed to by the arrow.
+Method \whileyinline{m} expects a reference as parameter, i.e. a memory address.
+It does not need to know whether the address is part of the stack (as in the figure) or part of the heap.
+There is no need to explicitly free the memory allocated in line~3, because the whole stack frame will be freed when \whileyinline{main} returns.
+
+If the allocation is inside a loop and the loop's body does not outlive the lifetime of the allocation, then it might not be possible to place these allocations on the stack:
+each loop iteration allocates a distinct portion of memory and with an unknown number of iteration it might not be possible to statically compute a stack layout with space for every allocation.
+These allocations and allocations of objects with unknown size must be placed on the heap.
+
+But also the heap-allocated memory can be deallocated without garbage collection:
+for each lifetime we manage a list of memory allocations.
+When the lifetime goes out of scope, i.e. at the end of a named block or a method, then the allocations in that list will be freed.
+Each allocation with \whileyinline{new} generates an entry in that list.
+Consider the following sketch of a program:
+
+\begin{whileycode}
+type unknownSize is ...
+method main():
+	&this:unknownSize x = this:new ...
+\end{whileycode}
+
+\noindent The memory layout can be as follows:
+
+\begin{figure}[!h]
+\centering
+\input{content/tikz/045_memory_layout2}
+\end{figure}
+
+The address of the allocation done in line~3 will be stored in the dynamic \texttt{allocations} list.
+Assigning another reference to \whileyinline{x} later in the program does not affect the reference in that list.
+When method \whileyinline{main} ends then we free all memory from the \texttt{allocations} list and the list itself.
+The list is placed on the heap such that we can dynamically add elements, this might be necessary for loops.
+
+When calling a method with lifetime parameters, then the compiler will also pass these \texttt{allocation} lists for all argument lifetimes.
+That way, allocations in the callee that use a lifetime parameter can be linked in the appropriate \texttt{allocations} list.
+
+Only lifetimes that are used with \whileyinline{new} or passed as lifetime argument to another method need an \texttt{allocations} list.
+We can omit the list for other lifetimes.
+Lifetime arguments, either explicitly given or automatically inferred, are available to the called method as lifetime parameters.
+The called method might allocate memory for those lifetimes and therefore needs access to their \texttt{allocations} lists.
+
+Furthermore, if the number of allocations for a lifetime is statically known, then we can place the \texttt{allocations} list for that lifetime as an array directly onto the stack.

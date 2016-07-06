@@ -1,0 +1,17 @@
+% !TeX root = ../../main.tex
+\begin{tikzpicture}[->,>=stealth',shorten >=1pt,auto,node distance=2.2cm,semithick,initial text={},font=\footnotesize]
+\tikzstyle{every state}=[draw]
+
+\node[initial above,state] (A)               {\whileyinline{&this:}};
+\node[state]               (B) [below of=A]  {\whileyinline{method<a>}};
+\node[state]               (C) [below left  of=B]  {\whileyinline{&*:}};
+\node[state]               (D) [below right of=B]  {\whileyinline{&a:}};
+
+\useasboundingbox ($(current bounding box.south west)-(4mm,2mm)$) rectangle ($(current bounding box.north east)+(4mm,0)$);
+
+\path (A) edge (B)
+      (B) edge node [pos=0.3] {p} (C)
+          edge node [swap, pos=0.3] {r} (D)
+      (C) edge [out=-135, in=157, looseness=1.2] (B)
+      (D) edge [out=-45, in=23, looseness=1.2] (B);
+\end{tikzpicture}

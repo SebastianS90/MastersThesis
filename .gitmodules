@@ -1,0 +1,4 @@
+[submodule "presentation/TUKL-Design"]
+	path = presentation/TUKL-Design
+	url = https://github.com/SebastianS90/TUKL-Design.git
+	branch = 16to9

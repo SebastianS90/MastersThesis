@@ -1,0 +1,165 @@
+% !TeX root = ../main.tex
+\section{Lifetimes}\label{section:design-lifetimes}
+
+A \emph{lifetime} in our extension to \whiley describes a region in the source code.
+Possible regions are method bodies and named blocks.
+Each lifetime has a name.
+The lifetime for method bodies is named \whileyinline{this}.
+The lifetime of named blocks have the block's name.
+Furthermore, the special lifetime \whileyinline{*} persists for the entire program.
+
+Each reference type is annotated with a lifetime.
+It states when the memory pointed to by that reference should be alive.
+More precisely, the following invariant must be maintained by the compiler:
+
+\begin{invariant}\label{invariant:alive}
+An initialized reference of type \whileyinline{&a:T} points to a portion of memory that will be alive at least until the program's control flow leaves the region described by lifetime \whileyinline{a}.
+\end{invariant}
+
+\begin{definition}\label{definition:alive}
+A memory location is alive if and only if:
+\begin{itemize}
+\item it has been allocated using the \whileyinline{new} operator and
+\item it has not yet been freed by the runtime system
+\end{itemize}
+\end{definition}
+
+\begin{figure}[t]
+\begin{whileycodec}{design-lifetimes-example}{Example program to illustrate \myref{invariant}{invariant:alive}}
+method main():
+	&this:int p
+	int x = 1
+	p = this:new x
+	myblock:
+		&myblock:int q = p
+		&myblock:int r = myblock:new 2
+		p = r // illegal
+	x = *p
+\end{whileycodec}
+\end{figure}
+
+We explain the invariant using the example program from \lstref{design-lifetimes-example}.
+Line~2 declares a local variable \whileyinline{p} without initializing it with a value.
+This is where the condition \emph{initialized reference} of \myref{invariant}{invariant:alive} comes into play.
+Although the local variable has already been declared as reference, it does not yet hold a value, i.e. does not point to anything.
+It is \emph{uninitialized}.
+The \whiley compiler already ensures \emph{definite assignment}, i.e. we cannot read a variable \whileyinline{v} if there might be a control flow path to that read operation without prior assignment to \whileyinline{v} \cite[pages 71, 82]{WLS}.
+
+We initialize \whileyinline{p} in line~4.
+The declared type of \whileyinline{p} is \whileyinline{&this:int}.
+Its lifetime is \whileyinline{this}, which denotes the body of method \whileyinline{main}.
+\myref{Invariant}{invariant:alive} therefore demands that the memory pointed to by \whileyinline{p} must not be freed before the control flow leaves method \whileyinline{main}.
+The \whileyinline{new} operator is annotated with a lifetime.
+It tells the compiler that the allocated memory must be alive until the control flow leaves method \whileyinline{main} such that it matches the type's lifetime.
+
+In line~6, we assign \whileyinline{p} to another reference \whileyinline{q}.
+The type of \whileyinline{q} is \whileyinline{&myblock:int}.
+To satisfy \myref{invariant}{invariant:alive}, the memory pointed to by the assigned reference must not be freed before control flow leaves \whileyinline{myblock}.
+On the other hand, \myref{invariant}{invariant:alive} ensures that the memory pointed to by \whileyinline{p} will not be freed before the control flow leaves method \whileyinline{main}.
+This holds regardless of what has been assigned to \whileyinline{p}, because its declared type is \whileyinline{&this:int}.
+Memory that will not be freed before the control flow leaves \whileyinline{main} will in particular not be freed before the control flow leaves \whileyinline{myblock}, because the first implies the latter.
+We can therefore allow this assignment.
+
+There is an assignment in line~8 where we attempt to assign \whileyinline{r} to \whileyinline{p}.
+Using the same argumentation, we know that the memory pointed to by \whileyinline{r} will not be freed before the control flow leaves \whileyinline{myblock}.
+But \whileyinline{p} must point to memory that cannot be freed before the control flow leaves method \whileyinline{main}.
+The implication does not hold in this case.
+We cannot allow this assignment because it would break \myref{invariant}{invariant:alive} and the safety of other commands might rely on it.
+In fact, we dereference \whileyinline{p} in line~9.
+It points to the memory assigned in line~7.
+The \whileyinline{new} operator was annotated with lifetime \whileyinline{myblock}, telling the compiler that this specific allocation can be freed when control flow leaves \whileyinline{myblock}.
+Allowing the assignment in line~8 could therefore lead to dereferencing freed memory, which is unsafe.
+
+We can distinguish the allowed from the forbidden assignment by looking at the involved lifetimes.
+In the first case, the lifetime of the assigned value is longer than demanded by the declared type of the variable that we assigned to.
+We say that lifetime \whileyinline{this} \emph{outlives} lifetime \whileyinline{myblock}.
+
+\begin{definition}\label{definition:outlives}
+A lifetime \whileyinline{a} outlives lifetime \whileyinline{b} if the region described by \whileyinline{b} is fully contained in the region described by \whileyinline{a}.
+\end{definition}
+
+\noindent Note that \myref{definition}{definition:outlives} is reflexive, i.e. a lifetime always outlives itself.
+Furthermore, the lifetime \whileyinline{*} outlives all lifetimes.
+
+
+\subsection{Subtyping}\label{section:design-subtyping}
+
+Whether or not assigning a value to a variable is allowed depends on their types.
+\whiley allows to assign a value \whileyinline{x} to a variable \whileyinline{v} if and only if the type of \whileyinline{x} is a \emph{subtype} of \whileyinline{v}'s declared type \cite[p. 40]{WLS}.
+We therefore need to extend subtyping for references to compare their lifetimes.
+
+\begin{definition}\label{definition:reference-subtype}
+A type \whileyinline{&a:A} is subtype of \whileyinline{&b:B} if and only if
+\begin{itemize}
+\item lifetime \whileyinline{a} outlives lifetime \whileyinline{b} and
+\item \whileyinline{A} and \whileyinline{B} describe the same type
+\end{itemize}
+\end{definition}
+
+\noindent The first condition is part of our extension, the second condition is \whiley's existing rule for subtyping of references.
+We cannot allow \whileyinline{A} to only be a subtype of \whileyinline{B} here because the following snippet breaks memory safety:%
+\footnote{\whiley actually used to allow it, but the bug was found and resolved while working on this thesis. See \url{https://github.com/Whiley/WhileyCompiler/issues/583}}
+
+\begin{whileycode}
+method m(&any x):
+	*x = 5 // allowed because x points to 'any' type
+
+method main():
+	&bool p = new true
+	m(p) // allowed if &bool is a subtype of &any
+	bool b = *p // saves '5' into a bool variable
+\end{whileycode}
+
+Types in \whiley describe sets of values.
+Type \whileyinline{T1} shall be a subtype of \whileyinline{T2} if the set of values in \whileyinline{T1} is a subset of values in \whileyinline{T2} \cite[p. 37]{WLS}.
+
+Our extension complies with the intended semantics, though the set analogy is complicated for references.
+Assume \whileyinline{A} and \whileyinline{B} describe the same type and \whileyinline{a} outlives \whileyinline{b}.
+Let \whileyinline{p} be a reference of type \whileyinline{&a:A}.
+Using \myref{invariant}{invariant:alive}, we know that \whileyinline{p} points to memory that will be alive at least until the control flow leaves \whileyinline{a}.
+Since \whileyinline{a} outlives \whileyinline{b}, the memory will in particular be alive until the control flow leaves \whileyinline{b}.
+Reference \whileyinline{p} is therefore also in type \whileyinline{&b:B}.
+
+
+\subsection{Lifetime Parameters}\label{section:design-lifetime-parameters}
+
+Methods can accept references as their parameters.
+A method can also return references.
+As with every reference type, parameter and return types need a lifetime.
+Furthermore, it might be necessary to relate lifetimes of parameter and return types.
+\emph{Lifetime parameters} provide a way to declare lifetime names that describe lifetimes originating from the method's caller.
+The caller will pass actual \emph{lifetime arguments} for these parameters.
+
+We do a \emph{lifetime substitution} for a method call:
+Lifetime parameters are mapped to the provided lifetime arguments.
+Every occurring lifetime in the method's parameter and return types is substituted by its appropriate lifetime argument.
+Consider the following example:
+
+\begin{whileycode}
+method <a> m(&a:int x) -> &a:int:
+	if ((*x) == 42):
+		return x
+	else:
+		return a:new 42
+
+method main():
+	&this:int x = new 1
+	&this:int y = m<this>(x)
+\end{whileycode}
+
+The program above declares a method \whileyinline{m} that accepts and returns type \whileyinline{&a:int}.
+Lifetime \whileyinline{a} is a lifetime parameter.
+The method therefore returns a reference of the same lifetime than given as parameter.
+When calling \whileyinline{m}, we give \whileyinline{this} as lifetime argument.
+Lifetime \whileyinline{a} in the parameter and return type is therefore substituted with \whileyinline{this}, such that the method invocation returns \whileyinline{&this:int} where \whileyinline{this} refers to \whileyinline{main}'s method body.
+
+
+\subsection{Context Lifetimes}\label{section:design-context-lifetimes}
+
+Anonymous methods, so-called \emph{lambda methods}, can access local variables from the enclosing method.
+This also holds for references.
+If such a reference is dereferenced inside the lambda method, then we have to ensure that the referenced memory location is still alive when the lambda method is executed.
+
+To solve this problem, we extend lambda methods and method types with a concept called \emph{context lifetimes}.
+These are lifetimes from the enclosing method that can be dereferenced inside a lambda method.
+A detailed discussion on the problem and our solution is given in \myref{section}{section:design-discussion-lambda}.

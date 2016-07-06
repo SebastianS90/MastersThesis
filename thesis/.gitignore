@@ -1,0 +1,6 @@
+/main.*
+!/main.tex
+/references.bib\~*
+
+/img/*-eps-converted-to.pdf
+/_minted-*

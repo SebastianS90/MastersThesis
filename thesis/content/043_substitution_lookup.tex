@@ -1,0 +1,251 @@
+% !TeX root = ../main.tex
+\section{Lifetime Substitution and Method Lookup}\label{section:substitution-and-lookup}
+
+So far we have discussed two different scenarios for lifetime substitution:
+\begin{enumerate}
+\item \myref{Section}{section:design-lifetime-parameters} describes substitution of lifetime parameters to calculate the actual return type of method invocations.
+Lifetime parameters have to be substituted with the appropriate lifetime arguments.
+
+\item In \myref{section}{section:implementation-typecheck-methods}, we discussed subtyping and intersection of method types.
+In order to compare two method types we need to ensure that their lifetime parameters have the same names.
+We therefore substitute them with ordered placeholders \whileyinline{$1}, \whileyinline{$2}, and so forth.
+\end{enumerate}
+
+\noindent Even though both use cases involve some form of substitution, they have different requirements:
+For the first case, we need to calculate the resulting type because it is the type that will be assigned to an invocation expression.
+This is not necessary for the second case.
+Here we only need the boolean result, whether or not the input types intersect.
+But the intersection algorithm has to be aware of recursive types and must avoid an infinite recursion.
+
+We therefore discuss appropriate substitution algorithms separately.
+\myref{Section}{section:substitution-return-type} presents a solution for the first case, i.e. the substitution in return types.
+\myref{Section}{section:substitution-subtyping} discusses lifetime substitution for subtyping.
+
+\whiley allows for method overloading, i.e. we can have multiple methods with the same name but different parameter types.
+Furthermore, our extension allows method invocation without specifying lifetime arguments.
+The compiler then needs to select a suitable method and infer appropriate lifetime arguments.
+The necessary changes to the method lookup algorithm are presented in \myref{section}{section:substitution-lookup}.
+
+
+\subsection{Substitution in Return Types}\label{section:substitution-return-type}
+\subsubsection{Motivation}
+Assume we have a method \whileyinline{m} of type \whileyinline{method<a>(&a:int)->(&a:int)}.
+To calculate the type of the invocation \whileyinline{m<this>(this:new 1)}, we need to \emph{substitute} lifetime parameters in the return type of \whileyinline{m}, i.e. instantiate lifetime parameter \whileyinline{a} with the actual lifetime argument \whileyinline{this}.
+The substituted type in that example is \whileyinline{&this:int}.
+
+The input to our algorithm is a type and a substitution.
+A substitution is a mapping from lifetime parameters to their appropriate lifetime arguments.
+The output of our algorithm is the substituted type.
+
+An intuitive solution would be to take the type automaton and simply replace all lifetime names according to the provided substitution.
+But this does not work because we could \emph{capture} lifetimes that are bound to lifetime parameters of nested method types.
+Consider the following program:
+
+\begin{whileycode}
+method <a, b> m1(&a:int x, &b:int y) -> int:
+	return *x + *y
+
+method <a> m2() -> method<a,b>(&a:int,&b:int)->(int):
+	return &m1
+
+method main():
+	b:
+		any m = m2<b>()
+\end{whileycode}}
+
+What should be the type of the invocation expression in line~9?
+We call the substitution algorithm with the return type of \whileyinline{m2}, i.e. \whileyinline{method<a,b>(&a:int,&b:int)->(int)}, and the substitution \whileyinline{a} $\mapsto$ \whileyinline{b}.
+The substituted type should be equivalent to\\
+\hspace*{0.25\linewidth}\whileyinline{method<c,d>(&c:int,&d:int)->(int)}.\\
+In particular, we must not substitute it to\\
+\hspace*{0.25\linewidth}\whileyinline{method<a,b>(&b:int,&b:int)->(int)} or\\
+\hspace*{0.25\linewidth}\whileyinline{method<b,b>(&b:int,&b:int)->(int)}.
+
+\whiley supports recursive types.
+We previously discussed \whileyinline{LinkedList} as an example for recursive record types, but also method types can be recursive. The following program uses a recursive method type:
+\begin{whileycode}
+type mymethod is method()->(mymethod)
+method m()->mymethod:
+	return &m
+\end{whileycode}
+
+\begin{figure}[t]
+\begin{subfigure}[b]{0.41\textwidth}%
+\input{content/tikz/043_recursive_method}%
+\caption{recursive method type}%
+\label{figure:recursive-method-automaton}%
+\end{subfigure}%
+\begin{subfigure}[b]{0.25\textwidth}%
+\input{content/tikz/043_recursive_method_return}%
+\caption{return type}%
+\label{figure:recursive-method-automaton-return}%
+\end{subfigure}%
+\begin{subfigure}[b]{0.34\textwidth}%
+\input{content/tikz/043_recursive_method_substituted}%
+\caption{substituted return type}%
+\label{figure:recursive-method-automaton-substituted}%
+\end{subfigure}%
+\caption{Substitution in a type automaton for a recursive method type.}
+\end{figure}
+
+Recursive types are challenging for lifetime substitution.
+The structure of the substituted type might be different from the original one and the type automaton might get bigger during substitution.
+Consider the recursive method type declared by\\
+\centerline{\whileyinline{type mymethod is method<a>(&*:mymethod)->(&a:mymethod)}.}\\
+Its type automaton is provided in \myref{Figure}{figure:recursive-method-automaton}.
+
+Our substitution algorithm will be called on the return type.
+We therefore first need to extract the type automaton for the return type.
+It is shown in \myref{Figure}{figure:recursive-method-automaton-return}.
+This extraction is easy, as we only need to change the root state.
+
+\begin{sloppypar}
+Assume there is a method \whileyinline{m} of this type \whileyinline{mymethod} and we invoke it as \whileyinline{m<this>(new &m)}.
+To calculate the type of this invocation expression we need to apply the substitution \whileyinline{a} $\mapsto$ \whileyinline{this} to the extracted return type from \myref{Figure}{figure:recursive-method-automaton-return}.
+The result is given in \myref{Figure}{figure:recursive-method-automaton-substituted}.
+\end{sloppypar}
+
+The substituted type is bigger than the original one, i.e. the automaton has more states.
+It is therefore important to prevent infinite recursion in the substitution algorithm.
+
+
+\subsubsection{Solution}
+Our substitution algorithm is aware of these challenges.
+The implementation can be found in class \javainline{wyil.util.type.LifetimeSubstitution}.
+It takes a type and a substitution as input and returns the substituted type.
+
+The key approach is as follows:
+the algorithm uses the extracted type automaton from the original type and builds a new type automaton for the substituted type.
+We recursively copy all automata states, beginning with the root state.
+We apply the substitution while copying the states to the new automaton.
+
+The algorithm recurses down the automaton structure in a depth-first manner.
+When we reach a method type, then we remember its lifetime parameters in an \javainline{ignored} set.
+They will not be substituted while copying the method's parameter and return types.
+This prevents the capturing problem described above.
+
+Finally, we need a solution to mitigate infinite recursion for recursive types.
+We therefore store a mapping of all previously copied states to their new states.
+If we need to copy the same state again, then we take the one that has already been copied.
+But the mapping needs to be aware of lifetime parameters that are excluded from substitution:
+we can only re-use an already copied state if the previous and current \javainline{ignored} sets are compatible.
+
+To see whether two \javainline{ignored} sets are compatible, we additionally store the set of substituted lifetimes for each copied state.
+It contains only the lifetimes from the substitution that have actually been replaced while copying that state and its children.
+We can re-use a copied state if the current \javainline{ignored} set is a superset of the previous one and it does not contain any lifetimes that have been substituted while when copying the state.
+In particular, two \javainline{ignored} sets will be compatible if they are the same.
+
+We can have several copies of the same original state that use different \javainline{ignored} sets.
+The resulting automaton therefore might have more states than the original one.
+But the size is limited:
+all \javainline{ignored} sets are subsets of lifetimes contained in the substitution.
+For an original automaton with $n$ states and a substitution that contains $m$ lifetimes, the resulting automaton has a maximum of $n * 2^m$ states.
+
+
+\subsection{Substitution for Subtyping}\label{section:substitution-subtyping}
+The second use-case for substitution is subtyping and intersection of method types.
+The key problem is that we need to compare two type automata that might be cyclic, i.e. for recursive types.
+The logic that avoids infinite recursion relies on the fact that the automata do not change, we only use a different state as root state.
+We therefore cannot use the algorithm from \myref{section}{section:substitution-return-type}.
+
+Our solution is added to class \javainline{wyil.util.type.SubtypeOperator}.
+The intersection algorithm recurses down both automata structures.
+We maintain for each automaton a lifetime substitution.
+It is applied when comparing lifetimes.
+
+The substitution maps lifetime parameters to \whileyinline{$1}, \whileyinline{$2}, etc.
+By choosing the \texttt{\$}-prefixed names we avoid collision with other lifetime names, because identifiers cannot start with~\texttt{\$}.
+Furthermore, we can avoid capturing of nested lifetime parameters easily:
+when recursion visits a nested method type, then the current substitution is updated.
+We add entries for the nested lifetime parameters, overwriting any existing substitution for that name.
+This way we ensure that lifetime names in structures with nested method types are always bound to the innermost lifetime parameter with the same name, i.e. the outer lifetime parameters cannot capture any lifetime names from nested method types.
+
+We have to distinguish lifetime parameters from different nesting levels.
+The two types\\
+\hspace*{0.12\linewidth}\whileyinline{method<a>() -> method[a]<b>(&a:int)->(&b:int)} and\\
+\hspace*{0.12\linewidth}\whileyinline{method<a>() -> method[a]<b>(&b:int)->(&a:int)}\\
+are different.
+But both \whileyinline{a} and \whileyinline{b} refer to a first lifetime parameter of a method and therefore would be replaced with \whileyinline{$1}. %$
+We therefore encode a nesting level into the lifetime names.
+The lifetime parameters from the innermost method type will be substituted with \whileyinline{$1}, \whileyinline{$2}, etc.
+For each outer level we prepend a \texttt{\$}, i.e. \whileyinline{$$1} and \whileyinline{$$2} for one nesting level, \whileyinline{$$$1} and \whileyinline{$$$2} for two nesting levels and so forth.
+For the two types above, \whileyinline{&a:int} will be substituted with \whileyinline{&$$1:int} and \whileyinline{&b:int} with \whileyinline{&$1:int}.
+This allows to distinguish both types.
+
+We start with an empty substitution for both automata.
+When we hit a method type then we first prepend a \texttt{\$} to each entry that is already part of the current substitutions.
+Then we add the new entries, overwriting possibly existing ones.
+Instead of modifying the automata we apply the substitution when reading a lifetime name.
+This allows us to keep the existing logic that avoids infinite recursion.
+
+
+\subsection{Method Lookup}\label{section:substitution-lookup}
+Method lookup is the process of resolving overloading, i.e. selecting a suitable method when there are multiple methods with the same name.
+\whiley collects all methods that have compatible parameter types, i.e. the given argument is a subtype of the expected parameter type.
+From these \emph{candidates}, the method with the most specific parameter types is used.
+If there is not a unique most specific candidate, then the method call is said to be \emph{ambiguous}, which is a compile-time error.
+This is similar to \java's behavior for calling overloaded methods.
+
+The method lookup algorithm needs to apply a lifetime substitution in parameter types.
+Furthermore, the lifetime arguments might not be explicitly specified.
+Consider the following program:
+
+\begin{whileycode}
+method <a> id(&a:int x) -> &a:int:
+	return x
+
+method main():
+	&this:int x = id(this:new 1)
+\end{whileycode}
+
+To see whether the method from line~1 is a candidate for the invocation in line~5, we need to compare the parameter types with the types of the actual arguments.
+The first method parameter is of type \whileyinline{&a:int}, but the provided parameter has type \whileyinline{&this:int}.
+In order to compare them, we need to replace the lifetime parameter \whileyinline{a} with a lifetime argument.
+But there are no lifetime arguments provided in the program.
+Assume we guess \whileyinline{this} as suitable lifetime argument for \whileyinline{a}.
+Then we use the substitution \whileyinline{a} $\mapsto$ \whileyinline{this} and the substituted parameter type \whileyinline{&this:int} matches the provided argument type.
+
+Our extension considers that substitution when comparing parameter and argument types.
+We use the substitution algorithm from \myref{section}{section:substitution-return-type}.
+But the challenging task is to actually guess suitable lifetime arguments if they are not provided by the programmer.
+
+Our solution is as follows:
+we consider all lifetimes occurring in the provided argument types and the default lifetime \whileyinline{*} as possible values for lifetime arguments.
+Then we enumerate all possible combinations for a list of lifetime arguments with these values.
+
+Let $p$ be the number of lifetime parameters and $a$ be the number of lifetimes extracted from the given arguments, including \whileyinline{*}.
+We have $a$ different options for each of the $p$ parameters.
+The total number of combinations therefore is $a^p$.
+
+\begin{sloppypar}
+Method lookup is implemented in the \javainline{resolveAsFunctionOrMethod} method of class \javainline{wyc.builde.FlowTypeChecker}.
+It first collects all methods with the right name and number of parameters.
+The actual selection logic is in \javainline{selectCandidateFunctionOrMethod}.
+If lifetime arguments have been specified explicitly, then we only consider methods with a matching lifetime parameter count.
+We check each method with the substitution defined by the provided lifetime arguments.
+If the lifetime arguments are omitted, then we first extract the lifetimes that shall be used as lifetime arguments.
+Then we try out all combinations for every method.
+A \emph{valid candidate} is a pair of method and lifetime arguments.
+\end{sloppypar}
+
+A single method can yield multiple valid candidates.
+Consider the following method:
+
+\begin{whileycode}
+method <a, b> fst(&a:int x, &b:int y) -> &a:int:
+	return x
+\end{whileycode}
+
+\noindent Assume we call \whileyinline{fst} as \whileyinline{fst(this:new 1, *:new 2)}.
+Our algorithm extracts the lifetimes \whileyinline{this} and \whileyinline{*} from the arguments.
+There are four combinations for lifetime arguments: \whileyinline{<this, this>}, \whileyinline{<this, *>}, \whileyinline{<*, this>}, and \whileyinline{<*, *>}.
+The latter two do not yield a valid candidate because the first argument is of type \whileyinline{&this:int} which is not a subtype of the substituted first parameter type \whileyinline{&*:int}.
+The former two will successfully type-check, we therefore get two valid candidates.
+The substituted parameter types for the first valid candidate are \whileyinline{(&this:int, &this:int)}, the types for the second candidate are \whileyinline{(&this:int, &*:int)}.
+We have to chose the one with the most specific parameter types.
+We see that the types in the second candidate are subtypes of the first candidate.
+The second candidate is therefore more specific than the first one.
+
+Our algorithm iterates over all valid candidates.
+If there is another candidate that is more specific, then the less specific one is discarded.
+If there is more than one choice left then the method invocation is ambiguous.

@@ -1,0 +1,64 @@
+%\enlargethispage{2cm}
+\section*{Abstract}
+Safety critical environments require high programming standards.
+\emph{Verification}	is a way to prove absence of certain faults and to make sure that a program meets a given specification.
+Unfortunately, most modern programming languages do not actively support verification.
+External tools are necessary and there is no good integration with the development process.
+
+\whiley is a programming language that aims to popularize verification.
+Functions can be annotated with pre- and postconditions and the compiler ships with a verifier that ensures that the implementation satisfies the specification.
+Verification is automatic, the programmer only needs to provide loop invariants.
+Verified \whiley programs are guaranteed to be free of runtime failures like index-out-of-bounds access in arrays and nullpointer dereferences.
+
+\rust is a new programming language that aims to be fast and safe, and it is classified as a systems programming language.
+\rust introduces a revolutionary concept of \emph{ownership} and \emph{lifetimes} that allows for automatic and safe memory management without using garbage collection.
+A lifetime roughly states how long a dynamically allocated portion of memory can be used.
+Each allocation belongs to a unique owner, and as soon as the owner's lifetime ends the memory will be freed, without the need for garbage collection.
+Memory safety is guaranteed by using static checks at compile time.
+
+This thesis extends the \whiley programming language to introduce a concept of lifetimes similar to \rust.
+But both programming languages have a different focus.
+We therefore need to adapt the concept such that it fits \whiley's environment.
+Our extension involves changes to the language syntax and several parts of the compiler and intermediate code formats.
+A main challenge is the treatment of lifetimes for subtyping with recursive types and in method invocations.
+
+\whiley currently compiles to bytecode for the \emph{Java Virtual Machine (JVM)}, using its garbage collector to deallocate memory.
+There is an experimental compiler for \whiley that generates \emph{C} code, but it is not yet able to deallocate dynamically allocated memory.
+We show how the compiler can use lifetimes for memory management without garbage collection, though the actual implementation for this part is left as future work.
+This allows one to greatly improve the \whiley to \emph{C} compiler, which is necessary to run \whiley programs on embedded devices that do not have enough resources to execute the \emph{JVM}.
+
+\newpage
+
+\begin{otherlanguage}{ngerman}
+\section*{Zusammenfassung}
+In sicherheitskritischen Umgebungen bedarf es hohen Programmierstandards.
+\emph{Verifikation} stellt sicher, dass bestimmte Laufzeitfehler nicht auftreten können und dass ein Programm seine Spezifikation erfüllt.
+Leider bieten die meisten modernen Programmiersprachen keine integrierte Unterstützung für Verifikation.
+Mit externen Werkzeugen können Programme zwar verifiziert werden, aber sie bieten meist keine gute Integration in den Entwicklungsprozess.
+
+\whiley ist eine Programmiersprache die versucht, Verifikation beliebter zu machen.
+Funktionen können mit Vor- und Nachbedingungen versehen werden.
+Der Übersetzer verifiziert das Programm und stellt dabei sicher, dass die Implementierung diese Spezifikationen erfüllt.
+Verifikation ist automatisiert, der Programmierer muss lediglich Invarianten für Schleifen angeben.
+Verifizierte \whiley Programme enthalten zudem keine Laufzeitfehler wie Zugriffe außerhalb der Indexgrenzen von Arrays oder Dereferenzierung von Nullpointern.
+
+\rust ist eine neue Programmiersprache die sich zum Ziel gesetzt hat, schnell und sicher zu sein.
+Sie ist als Systemprogrammiersprache klassifiziert.
+\rust führt ein revolutionäres Konzept von \emph{Ownership} und \emph{Lifetimes} ein.
+Damit ist es möglich, Speicher automatisiert zu verwalten und Speichersicherheit zu garantieren, ohne auf Garbage Collection angewiesen zu sein.
+Eine Lifetime beschreibt grob gesagt wie lange ein dynamisch zugeteilter Speicherbereich benutzt werden kann.
+Jede Zuteilung gehört immer einem Besitzer (\emph{Owner}) und sobald dessen Lifetime endet kann der zugeteilte Speicher freigegeben werden.
+Dazu ist keine Garbage Collection notwendig.
+Speichersicherheit wird durch statische Checks während der Übersetzung sichergestellt.
+
+In dieser Masterarbeit erweitern wir \whiley um ein Konzept für Lifetimes ähnlich wie in \rust.
+Die beiden Programmiersprachen haben jedoch einen unterschiedlichen Fokus, sodass wir einige Anpassungen am Konzept vornehmen müssen, damit es zur Umgebung von \whiley passt.
+Für unsere Erweiterung sind Änderungen an der Sprachsyntax und einigen Teilen des Übersetzers sowie der Zwischensprache von \whiley nötig.
+Der Umgang mit Lifetimes in Verbindung mit Subtyping von rekursiven Typen und bei Methodenaufrufen ist eine Herausforderung.
+
+Derzeit wird \whiley in Bytecode für die \emph{Java Virtual Machine (JVM)} übersetzt, dessen Garbe Collector zur Freigabe von dynamisch zugewiesenem Speicher benutzt wird.
+Es gibt einen experimentellen Übersetzer für \whiley, welcher \emph{C} code generiert, aber dieser kann dynamisch zugewiesenen Speicher nicht wieder freigeben.
+Wir zeigen, wie der Übersetzter Lifetimes zur Speicherverwaltung ohne Garbage Collection verwenden kann.
+Dies bereitet einen Weg für eine bedeutende Verbesserung des \whiley zu \emph{C} Übersetzers.
+Dadurch wird es möglich, \whiley Programme auf eingebetteten Geräten auszuführen, die nicht genug Ressourcen für die \emph{JVM} haben.
+\end{otherlanguage}

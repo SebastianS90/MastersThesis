@@ -1,0 +1,323 @@
+% !TeX root = ../main.tex
+\section{Rust and Lifetimes}\label{section:background-rust}
+
+We provide here a short introduction of some concepts of \rust that are relevant for this thesis.
+A more detailed introduction of the programming language can be found in the official \rust book \cite{RustBook} and the \emph{Rustonomicon} \cite{Rustonomicon}.
+
+\rust aims to provide a fast and yet safe programming language.
+Our focus is to examine its memory model, to see how it can provide automatic memory management without garbage collection.
+The three main terms related to this are \emph{ownership}, \emph{borrowing} and \emph{lifetimes}.
+Reed \cite{Patina} established a formal model for the key features that provide memory safety and proved soundness of that model.
+
+\subsection{Stack, Heap and Ownership}
+
+Like many programming languages, \rust allows to allocate memory on the stack or on the heap.
+The stack is an automatically managed portion of memory, where each function execution allocates a so-called \emph{stack frame} that contains all local variables.
+The stack-frame will be freed automatically once the function returns and therefore anything allocated there cannot outlive the function itself.
+On the other hand, the heap is a portion of memory that is managed more dynamically.
+Memory there can live longer than a single function execution.
+
+In \rust, we can use \emph{variable bindings} to bind a value to a name.
+The following program simply binds an integer \rustinline{42} to the variable \rustinline{x}.
+
+\begin{rustcode}
+fn main() {
+	let x = 42;
+}
+\end{rustcode}
+
+The compiler will insert an integer with value \rustinline{42} into the current stack frame and use its address whenever \rustinline{x} is used.\footnote{For the sake of simplicity we do not consider unspilled variables stored in registers and ignore optimizations like constant propagation.} Variable \rustinline{x} is said to \emph{own} that portion of memory.
+When the owner goes out of scope, the memory will be freed.
+The scope of a variable is just the enclosing pair of curly braces \rustinline{{ }}.
+In this example there is nothing special to do, as the stack frame holding our integer will be freed automatically once function \rustinline{main} returns.
+
+Consider now a different program.
+Since all addresses within a stack frame have to be calculated at compile time, we cannot store constructs of unknown size in it.
+Instead, that data has to be stored on the heap.
+One example for constructs of variable size in \rust are vectors.
+
+\begin{rustcode}
+fn main() {
+	let fib = vec![1, 1, 2, 3, 5, 8];
+}
+\end{rustcode}
+
+This example creates a vector containing the first six Fibonacci numbers.
+Internally, the vector is stored as a triple denoting its current length, its capacity and a pointer to the actual data on the heap.
+In line~3, variable \rustinline{fib} goes out of scope.
+The vector owned by it will then be deallocated, which includes freeing its data on the heap.
+This deallocation step happens directly and deterministically in line~3.
+There is no need for reference counting or a garbage collector that eventually finds some unreachable vector data on the heap.
+
+Note that a vector in \rust differs from an \javainline{ArrayList} in \java:
+to access an element in a vector, we have to take the address of the data pointer, add a calculated offset and access the resulting address.
+These pointers are called \emph{fat pointers}, because they store additional information (length and capacity) together with the address.
+For an \javainline{ArrayList}, we must first dereference the list object.
+Then we read the reference to the contained array, add the appropriate offset and access that address.
+There are two dereference operations necessary while only one is needed for vectors in \rust.
+Dereferences are expensive, because the machine's caching system does not benefit from fetching larger blocks \cite{kahn1998mechanism}.
+
+
+\subsection{Move Semantics}
+
+One important property of \rust's safety system is that there must only be one owner for each memory location at any time.
+When we simply assign one variable to another, then ownership is transferred because \rust uses so-called \emph{move semantics}.
+Consider the following modified program:
+
+\begin{rustcode}
+fn main() {
+	let mut fib = vec![1, 1, 2, 3, 5, 8];
+	let mut fib2 = fib;
+	fib2.push(13);
+	println!("fib[0] is {}", fib[0]); // illegal
+}
+\end{rustcode}
+
+First of all we notice the newly inserted \rustinline{mut} keyword.
+It states that the bound value is mutable, i.e. we can later modify the assigned vector.
+In line~3, we assign our vector from variable \rustinline{fib} to a new variable \rustinline{fib2}.
+In line~4, we append one more number to that vector.
+The following will happen internally: we start with our initial vector, where length, capacity and a pointer is stored on the stack and the actual data on the heap.
+In line~3, we \emph{move} \rustinline{fib} to \rustinline{fib2}.
+Moving means that all data at \rustinline{fib}'s memory location will be copied to \rustinline{fib2}.
+So we copy the triple consisting of length, capacity and pointer, but not the actual vector elements.
+The operation therefore runs in constant time, independent of the vector's length.
+
+Now we push a new entry to that vector.
+That updates the vector's length and adds the new element.
+If the capacity does not allow to add an element, a new and bigger portion of memory will be allocated on the heap such that the data can be transfered there.
+Afterwards, the pointer is updated and the old heap data freed.
+
+The last line now tries to access the vector through our old name \rustinline{fib}.
+This is illegal, as the value has moved to the new name \rustinline{fib2}.
+If we allow accessing it via its old variable, then we might access a dangling pointer.
+The \rustinline{push} call in the previous line might have deallocated the old data array after allocating a bigger one.
+The semantics of \rust therefore forbids using moved variable bindings.
+
+For some types this protection provided by move semantics is not necessary.
+For example, a primitive type like a number or boolean value can just be copied without invalidating the old binding.
+\rust uses a marker trait called \rustinline{Copy} to identify those types.
+After doing an assignment with such a type, there are two independent values with separate owners.
+All primitive types are \rustinline{Copy}.
+\rustinline{Copy} can be derived for records if all their fields are \rustinline{Copy}.
+More complex types like vectors are not \rustinline{Copy}.
+
+Some types that are not marked as \rustinline{Copy} can still be \emph{cloned} explicitly, but this process involves creating a complete deep copy, which is expensive for big data structures.
+
+
+\subsection{Boxes and Reference-Counted Pointers}
+
+Even bigger structures can be allocated on the stack, if their size is statically known.
+To avoid moving around big structures, we can explicitly allocate them on the heap.
+\rust uses the type \rustinline{Box} for a heap-allocated portion of memory.
+A \rustinline{Box} is just a pointer to the heap.
+It is similar to a vector with length one, but as the length cannot change there is no need to store length or capacity.
+Each \rustinline{Box} has a single owner.
+Once the owner goes out of scope, the \rustinline{Box}'s content on the heap will be deallocated.
+For moving a \rustinline{Box}, only the pointer itself has to be copied into the new location.
+This happens analogue to the behavior already described for vectors.
+Boxes are allocated with \rustinline{let b = Box::new(5)} and can be accessed as \rustinline{*b}.
+
+In some cases it might be very difficult to find a flow through your program such that a \rustinline{Box} always has only one owner.
+For these cases, \rust provides the type \rustinline{Rc} which are \emph{reference-counted} pointers.
+This type imposes a runtime overhead, as it manages a counter that tracks how many pointers to it exist.
+The \rustinline{Rc} owns its contained value and deallocates it when the last pointer to it goes out of scope.
+
+\rustinline{Rc} cannot be shared over different threads in a multi-threaded scenario.
+There is a special type \rustinline{Arc} (\emph{atomic \rustinline{Rc}}) for that use case.
+It has proper synchronization and therefore imposes more overhead than the simpler \rustinline{Rc}.
+
+The programmer has to be aware that cyclic reference counted structures will not be freed automatically and therefore lead to memory leaks \cite{RustCycles}.
+These cycles have to be broken manually.
+
+
+\subsection{Borrowing}
+
+Instead of moving the value and thereby transferring ownership to another variable, the owner can also  \emph{lend} a value to another variable that \emph{borrows} it for a specific amount of time.
+Borrowing allows to give another variable or a called function access to a value without transferring ownership.
+
+\begin{rustcode}
+fn main() {
+	let fib_original = vec![1, 1, 2, 3, 5, 8];
+	let fib_borrowed = &fib_original;
+	println!("The 4th fibonacci number is {}", fib_original[4]);
+	println!("The 5th fibonacci number is {}", fib_borrowed[5]);
+}
+\end{rustcode}
+
+The notation \rustinline{let fib_borrowed = &fib_original} states that \rustinline{fib_borrowed} borrows the vector from \rustinline{fib_original}.
+We can access it through both names, as \rustinline{fib_borrowed} is just a reference to the original value.
+This immediately should raise the question how to prevent the situation described above, where one of both variables contains a dangling pointer after an update.
+
+To see how that problem is solved, we again need to consider mutability.
+As seen before, variable bindings must be declared with the \rustinline{mut} keyword to allow the value to be modified.
+There are mutable and immutable values.
+The same holds for borrowed references: A value can be borrowed mutable or immutable.
+Consider the following program:
+
+\begin{rustcode}
+fn main() {
+	let mut fib_original = vec![1, 1, 2, 3, 5, 8];
+	let fib_borrowed = &fib_original;
+	println!("The 4th fibonacci number is {}", fib_original[4]);
+	fib_original.push(13); // illegal
+	println!("The 5th fibonacci number is {}", fib_borrowed[5]);
+}
+\end{rustcode}
+
+This program contains four borrowings: the immutable borrowing in line~3 is directly visible.
+But there are two more immutable borrowings in line~4 and 6 to read the value that is printed.
+And finally there is a mutable borrowing in line~5.
+The type \rustinline{Vec<T>} contains a function \rustinline{fn push(&mut self, value: T)}, which is the one called in line~5.
+\rustinline{&mut self} hereby means that the object receiving the function call is borrowed mutable until the function returns.
+Another way to borrow the vector mutable would be to replace line~3 by \rustinline{let mut fib_borrowed = &mut fib_original;}.
+
+One fundamental principle of \rust's borrow system is that there can be only a single mutable borrowing or multiple immutable borrowings at any time.
+In line~3 of the program above \rustinline{fib_borrowed} borrows \rustinline{fib_original} immutable.
+That borrowing remains as long as \rustinline{fib_borrowed} stays in scope, i.e. until the closing brace in line~7.
+Line~4 is allowed, as it just initiates a second immutable borrowing lasting for that single statement, and multiple immutable borrowings are allowed.
+If we had changed line~3 to a mutable borrowing, line~4 would already have been illegal as it would have combined a mutable borrowing with an immutable one.
+
+Line~5 attempts to borrow \rustinline{fib_original} mutable while it is still borrowed immutable by \rustinline{fib_borrowed}.
+This is not allowed and the program gets rejected by the compiler's borrow checker.
+
+These constraints might look restrictive, but they provide a safe memory model without additional runtime checks.
+Data races are avoided by design, as they would need two pointers to the same variables where at least one of them is mutable.
+Consider the following example that iterates over a vector:
+
+\begin{rustcode}
+fn main() {
+	let mut fib = vec![1, 1, 2, 3, 5, 8];
+	for x in &fib {
+		// ...
+	}
+	fib.push(13);
+}
+\end{rustcode}
+
+Hidden in syntactic sugar within line~3, we implicitly call the \rustinline{iter} function on \rustinline{fib} which borrows the vector immutable until the end of our loop.
+Therefore, we cannot modify the vector within the loop.
+However, line~6 is fine as the immutable borrowing ends in line~5 and we can borrow the vector mutable afterwards.
+Modifying what you are iterating over is problematic also in other languages.
+If you try to modify a Collection in \java while iterating over it, the iterator will throw a \javainline{ConcurrentModificationException} at runtime.
+\rust does not allow that situation and the program does not compile in the first place.
+
+
+\subsection{Lifetimes}
+
+Memory whose owner goes out of scope will be freed.
+This is either unavoidable, as the memory is allocated on the stack and the enclosing stack frame will be deallocated once the function returns, or it is by design to manage heap-allocated memory without garbage collection.
+In either case we must ensure that there are no other accessible references to the freed portion of memory.
+This is why \rust enforces one simple rule for borrowed references: a borrowed reference must not outlive the actual value.
+Consider the following program:
+
+\begin{rustcode}
+fn main() {
+	let mut x = &1;
+	{
+		let y = 2;
+		x = &y; // illegal
+	}
+	println!("x points to value {}", *x);
+}
+\end{rustcode}
+
+Line~2 allocates memory for an integer with value \rustinline{1}.
+A pointer to this memory is stored into another portion of memory, which is bound to variable \rustinline{x}.
+The curly braces start a new scope that spreads from line~3 to 6.
+Inside this scope, we allocate another integer that is bound to \rustinline{y}.
+Afterwards we try to store a reference to it into \rustinline{x}.
+This is not allowed! The memory bound to \rustinline{y} will be freed once \rustinline{y} goes out of scope.
+This is at line~6.
+As \rustinline{x} is still in scope, we might still access it.
+In fact, we attempt to read the integer pointed to by \rustinline{x} in line~7.
+As \rustinline{y} has been deallocated, we access a dangling pointer.
+
+The \rust compiler rejects the program above due to \emph{lifetimes}.
+Each value and each borrowing is assigned with a lifetime.
+It describes a part of the program where that value can be used, i.e. roughly the scope of its declaration.
+The lifetime for a local variable starts at its declaration and ends at the end of its enclosing scope.
+In our example, lifetime of \rustinline{x} goes from line~2 to line~8 and lifetime of \rustinline{y} from line~4 to line~6.
+In line~5, \rustinline{x} tries to borrow the value of \rustinline{y}, but it's own lifetime is longer than the lifetime of \rustinline{y}.
+We say that the lifetime of \rustinline{y} does not \emph{outlive} the lifetime of \rustinline{x}.
+This is not allowed.
+There is no runtime overhead for checking lifetimes, as they are just a restriction checked by the compiler to ensure memory safety.
+
+To handle lifetimes across functions, \rust offers lifetime parameters.
+Consider the following program:
+\begin{rustcode}
+fn inc<'a>(x : &'a mut u32) -> &'a mut u32 {
+    *x = *x + 1;
+    return x;
+}
+
+fn main() {
+	let mut x = 1;
+	let p = inc(&mut x);
+}
+\end{rustcode}
+
+Function \rustinline{inc} is declared to take one parameter \rustinline{x} that is a mutable reference to an unsigned 32 bit integer.
+The return value will also be a reference to such an integer.
+And the annotated lifetime \rustinline{'a} states that both references will have the same lifetime.
+While the above program is fine, the following modification will not compile:
+
+\begin{rustcode}
+fn main() {
+	let p : &u32; // uninitialized declaration
+	{
+		let mut x = 1;
+		p = inc(&mut x); // illegal
+	}
+	println!("p points to {}", *p);
+}
+\end{rustcode}
+
+Because \rustinline{inc} returns a reference of the same lifetime as it gets passed as as an argument, the lifetime of the argument \rustinline{x} in line~5 must be at least the lifetime of \rustinline{p}, where the result gets assigned to.
+But \rustinline{x} does not outlive \rustinline{p} because it is declared in a smaller scope.
+
+If the function has only one reference type parameter, then you can leave out lifetime parameters, as \rust automatically declares a lifetime parameter for that reference type and assigns it to all reference types in the return value.
+This feature is called \emph{lifetime elision}\footnote{Lifetime elision actually can handle more cases than described here.
+They are not needed for a basic understanding and therefore left out for simplicity.}.
+
+
+\subsection{Variance and Subtyping}
+
+In \rust, lifetimes are part of the type system and must therefore be considered when talking about subtyping.
+To understand the subtyping constraints defined by a programming language, it is helpful to ask the following question:
+\textit{if I expect type T, what other types can I be given without breaking safety?}
+For the following, we consider two types \emph{Square} and \emph{Rectangle}, where \emph{Square} is a subtype of \emph{Rectangle}.
+
+If you expect to get an immutable reference to a rectangle, you can safely use a mutable one instead;
+you just do not make use of its ability to mutate the value pointed to.
+There is also no problem if the provided reference is actually a reference to a square, because its special characteristic does not affect read-only access.
+Lastly, if the given reference has a longer lifetime than expected, then you can still safely access it.
+
+If the expected reference is a mutable reference to a rectangle, then the provided one must obviously be mutable.
+But now we cannot accept a reference to a square:
+you might want to store a non-quadric rectangle to it.
+This would break safety for other readers that still expect the reference to point to a square.
+To summarize and formalize, the following rules hold for subtyping in \rust (cf. \cite{Rustonomicon}):
+\begin{itemize}
+\item \rustinline{&'a mut T} is a subtype of \rustinline{&'a T}
+\item \rustinline{&'a T} is covariant over \rustinline{'a} and \rustinline{T}
+\item \rustinline{&'a mut T} is covariant over \rustinline{'a} but invariant over \rustinline{T}
+\end{itemize}
+
+
+\subsection{Summary: Different Ways to Store and Share Values}
+
+We have seen different ways to store values in a \rust program.
+Most importantly, every value needs a single owner at all times.
+A value can be directly owned by a local variable.
+These \emph{variable bindings} are \emph{immutable} unless declared as \emph{mutable} using the \rustinline{mut} keyword.
+A normal assignment always \emph{moves} the value, which makes the former name invalid for future access.
+
+To share a value, it can be \emph{borrowed} by another reference, using the \rustinline{&T} and \rustinline{&mut T} types.
+A borrowing is immutable unless the \rustinline{mut} keyword is used.
+The borrow checker imposes constraints to prevent data races.
+Furthermore, each borrowing has a \emph{lifetime} that must be within the lifetime of the borrowed value.
+
+To store a value on the heap, a \rustinline{Box} can be used.
+It owns its contained value, but needs a single owner for itself.
+If you are unable to provide a single owner for a value, then it can be wrapped in one of the types \rustinline{Rc} or \rustinline{Arc}, but that imposes runtime overhead.

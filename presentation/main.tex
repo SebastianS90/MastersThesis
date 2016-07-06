@@ -1,0 +1,89 @@
+\documentclass[%
+	aspectratio=169,%
+	10pt,%
+	compress,%
+	%handout,%
+]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[ngerman,english]{babel}% multiple languages with foreignlanguage
+\selectlanguage{english}
+\usepackage{xcolor}% colors: http://mirror.aut.ac.nz/CTAN/macros/latex/contrib/xcolor/xcolor.pdf
+\usepackage{courier} % nicer monospace font
+\usepackage{csquotes}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows,automata,calc}
+\usepackage[nocolor]{drawstack}
+
+% Theme
+\usetheme[%
+	noptsans,%
+	navigation=true,%
+	frametotal=true,%
+]{TUKL}
+
+% No navigation buttons
+\setbeamertemplate{navigation symbols}{}
+
+\title{Lifetime Analysis for Whiley}
+\subtitle{Master's Thesis}
+\author{Sebastian Schweizer}
+\date{06.07.2016}
+
+% Listings
+\usepackage{tcolorbox}
+\tcbuselibrary{minted}
+\tcbuselibrary{skins}
+\tcbuselibrary{breakable}
+\usemintedstyle{mythesis}
+\def\mytcboptions{%
+	sharp corners=all,% no round corners, please!
+	boxrule=0.3mm,% thickness of border
+	top=0pt,
+	bottom=0pt,
+	%
+	% title is used as caption
+	coltitle=black,% caption should be black
+	attach boxed title to bottom left,% magic to get it to the bottom
+	boxed title style={%
+		enhanced,size=minimal,%
+		opacityfill=0,frame hidden,% no box around caption
+		top=2mm,% space between actual box and caption
+		bottom=1mm,% some additional space before text continues
+	},%
+}
+\def\mymintedoptions{%
+	fontsize=\small,% smaller font = less space used
+	tabsize=2,% save some more space
+	breaklines,% allow to break lines after spaces
+	stripall,% strip all leading and trailing whitespace from the input
+	escapeinside=@@,%
+}
+
+
+% \definetcblisting{language}{background color}{frame color}{line numbers background}
+% -> \begin{languagecode}[tcb options]...\end{languagecode}
+% -> \begin{languagecodec}[tcb options]{label}{title}...\end{languagecode}
+% -> \languagefile[tcb options]{filename}
+% -> \languagefilet[tcb options]{filename}{label}{title}
+% -> \languageinline{code}
+\input{listingdefinitionhelper}
+\definetcblisting{java}    {red!5!white}  {red!75!black}  {red!50!black!20!white}
+\definetcblisting{rust}   {blue!5!white} {blue!75!black} {blue!50!black!20!white}
+\definetcblisting{whiley}{green!5!white}{green!50!black}{green!50!black!20!white}
+
+
+\begin{document}
+
+\begin{frame}
+	\titlepage
+\end{frame}
+
+\input{content/00_agenda}
+\input{content/01_whiley}
+\input{content/02_lifetimes}
+\input{content/03_extension}
+\input{content/04_conclusion_outlook}
+
+\end{document}

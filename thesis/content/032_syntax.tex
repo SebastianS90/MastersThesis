@@ -1,0 +1,142 @@
+% !TeX root = ../main.tex
+\section{Syntax}\label{section:syntax}
+This section states syntax extensions we make to the \whiley language.
+Only updates to the grammar are given, the full specification is available in \cite{WLS}.
+An introduction to the \whiley language is provided in \myref{section}{section:background-whiley}.
+The syntax is given in a form derived from the popular \emph{Backus–Naur Form} \cite{Knuth:1964:BNF:355588.365140}.
+Optional elements are enclosed in square brackets \texttt{[ ]}.
+Groups are enclosed in parentheses \texttt{( )}.
+Repetitions are denoted by a superscript star.
+Nonterminals are presented as plain words and terminals (tokens) are contained in a box.
+
+The core extension is to annotate reference types with a concept of lifetimes:
+\begin{syntax}
+\syntaxrule{ReferenceType}{\token{\&} \nonterminal{Type}}
+\syntaxalternative{\token{\&} \nonterminal{Lifetime} \token{:} \nonterminal{Type}}
+
+\syntaxrule{Lifetime}{\token{*} \alternative \token{this} \alternative \nonterminal{Ident}}
+\end{syntax}
+\noindent The first option for \nonterminal{ReferenceType} is from the current \whiley specification.
+Type \whileyinline{&int} represents a reference to \whileyinline{int} and is equivalent to \whileyinline{&*:int}, where \whileyinline{*} explicitly specifies the \emph{default lifetime}.
+It is meant to be used when the programmer cannot or does not want to specify any lifetime.
+The compiler then has to manage memory for that reference by some form of static analysis or garbage collection.
+Form \whileyinline{&this:int} uses the special lifetime name \whileyinline{this} that denotes the lifetime of the current method body.
+We introduce \whileyinline{this} as new keyword to the \whiley language.
+Finally, any declared lifetime identifier \whileyinline{a} can be used in the form \whileyinline{&a:int}.
+
+Allocation of memory in \whiley is done using the \whileyinline{new} operator.
+We extend the syntax such that we can optionally define a lifetime for the allocated portion of memory:
+\begin{syntax}
+\syntaxrule{NewExpr}{\token{new} \nonterminal{Expr}}
+\syntaxalternative{\nonterminal{Lifetime} \token{:} \token{new} \nonterminal{Expr}}
+\end{syntax}
+\noindent While \whileyinline{new 42} and \whileyinline{*:new 42} allocate an integer with default lifetime, the new options are \whileyinline{this:new 42} and \whileyinline{a:new 42}, which allocate memory for the annotated lifetime.
+
+To declare new lifetime names we introduce \emph{named blocks}.
+They can occur in method bodies and may be nested with other blocks:
+
+\begin{whileycode}
+method m():
+	int x = 1
+	myblock: // declares a new lifetime 'myblock'
+		&myblock:int y = new x
+		int i = 0
+		while (i < 5):
+			i = i + 1
+			mynestedblock:
+				&mynestedblock:int z = new i
+				// ...
+	// here neither 'myblock' nor 'mynestedblock' are valid
+\end{whileycode}
+
+\noindent Formally, we define an additional statement \nonterminal{NamedBlock}:
+\begin{syntax}
+\syntaxrule{NamedBlock$^\ell$}{\nonterminal{Ident} \token{:} \nonterminal{Block$^\gamma$}}
+\syntaxcondition{$\ell < \gamma$}
+\end{syntax}
+\noindent A \nonterminal{Block} is a list of statements.
+The annotated condition $\ell < \gamma$ states that all statements whose indentation is greater than the \nonterminal{Ident}'s indentation are considered as part of the \nonterminal{Block}, i.e. line~4 to 10 in the example program above belong to the \nonterminal{Block} of \whileyinline{myblock}.
+Keyword \token{this} is not allowed as identifier for lifetime names in named blocks.
+
+Furthermore, we extend the syntax of method declarations to allow for specifying lifetime parameters.
+Function declarations do not need to be extended, as functions are pure and must not make use of references.
+Inspired by the syntax for \java generic type parameters, we declare all lifetime names used in method parameters and return type into angle brackets before the method name:
+
+\begin{whileycode}
+method <a, b> m1(&a:int x, &b:int y) -> &a:int:
+method <a> m2(&{&a:int val} container) -> &a:int:
+\end{whileycode}
+
+\noindent The relevant update to the grammar is as follows:
+\begin{syntax}
+\syntaxrule{MethodDecl}{\token{method} \optionstart \token{<} \nonterminal{LifetimeParameters} \token{>} \optionend}
+\syntaxcontinue{\nonterminal{Ident} \token{(} \nonterminal{Parameters} \token{)} \ldots}
+\syntaxrule{LifetimeParameters}{\optionstart \nonterminal{Ident} \groupstart\token{,} \nonterminal{Ident}\groupendstar \optionend}
+\end{syntax}
+\noindent The omitted part contains elements not affected by our lifetime extension, namely return type, \whileyinline{requires} and \whileyinline{ensures} declarations, and the method body.
+As seen before in named blocks, the special lifetime \whileyinline{this} is considered to be a keyword and must not appear in \nonterminal{LifetimeParameters}.
+
+Our next syntax extension affects method invocations.
+It is needed to pass lifetime names into the \nonterminal{LifetimeParameters} that we just defined.
+In line~2 of the following program we call a method \whileyinline{min} with two lifetime parameters.
+Its actual implementation is not relevant for this extension, but given as an example:
+\begin{whileycode}
+method main():
+	&this:int x = min<this, this>(this:new 3, this:new 5)
+
+method <a, b> min(&a:int x, &b:int y) -> &a:int|&b:int:
+	if (*x) < (*y):
+		return x
+	else:
+		return y
+\end{whileycode}
+
+\noindent The updated grammar for method invocation is:
+\begin{syntax}
+\syntaxrule{InvokeExpr}{\nonterminal{Name} \optionstart \token{<} \nonterminal{LifetimeArgsList} \token{>} \optionend}
+\syntaxcontinue{\token{(} \nonterminal{ArgsList} \token{)}}
+\syntaxrule{LifetimeArgsList}{\optionstart \nonterminal{Lifetime} \groupstart\token{,} \nonterminal{Lifetime}\groupendstar \optionend}
+\end{syntax}
+\noindent Readers familiar with the \java syntax for invoking methods with generic type parameters might be concerned about the defined syntax.
+A detailed discussion is given in \myref{section}{section:parser}.
+
+As \whiley combines functional and imperative features, we can use methods as values.
+To do so, there is a syntactical representation for method types.
+Furthermore, methods can be declared as an anonymous method, using so-called \emph{Lambda expressions}.
+We have to update both concepts to allow for specifying lifetime parameters.
+
+The following program utilizes our updated syntax.
+It declares a type alias \whileyinline{mymethod} for methods that take two references of possibly different lifetimes and yields a reference with default lifetime.
+The lambda expression in line~4 represents such a method.
+We call it in line~5, using the already introduced syntax for specifying lifetime arguments.
+
+\begin{whileycode}
+type mymethod is method<a, b>(&a:int, &b:int)->(&*:int)
+
+method main():
+	mymethod m = &<a, b>(&a:int x, &b:int y -> new (*x) + (*y))
+	&int p = m<this, *>(this:new 1, new 2)
+	assert (*p) == 3
+\end{whileycode}
+
+The updated grammar also introduces a concept named \emph{context lifetimes}.
+These are lifetimes from the enclosing method that can be used inside the lambda expression.
+The example above does not use that concept.
+A detailed explanation will be given in \myref{section}{section:design-discussion-lambda}.
+The updated grammar is as follows:
+
+\begin{syntax}
+\syntaxrule{MethodType}{\token{method} \optionstart \token{[} \nonterminal{ContextLifetimes} \token{]} \optionend}
+\syntaxcontinue{\optionstart \token{<} \nonterminal{LifetimeParameters} \token{>} \optionend}
+\syntaxcontinue{\nonterminal{ParameterTypes} \optionstart \token{->} \nonterminal{ParameterTypes} \optionend}
+
+\syntaxrule{ContextLifetimes}{\optionstart \nonterminal{ContextLifetime} \groupstart\token{,} \nonterminal{ContextLifetime}\groupendstar \optionend}
+
+\syntaxrule{ContextLifetime}{\token{this} \alternative \nonterminal{Ident}}
+
+\syntaxrule{ParameterTypes}{\token{(} \optionstart \nonterminal{Type} \groupstart\token{,} \nonterminal{Type}\groupendstar \optionend \token{)}}
+
+\syntaxrule{LambdaExpr}{\token{\&} \optionstart \token{[} \nonterminal{ContextLifetimes} \token{]} \optionend}
+\syntaxcontinue{\optionstart \token{<} \nonterminal{LifetimeParameters} \token{>} \optionend \token{(}}
+\syntaxcontinue{\optionstart \nonterminal{Type} \nonterminal{Ident} \groupstart\token{,} \nonterminal{Type} \nonterminal{Ident}\groupendstar \optionend} \syntaxcontinue{\token{->} \nonterminal{Expr} \token{)}}
+\end{syntax}

@@ -1,0 +1,129 @@
+% !TeX root = ../main.tex
+\section{Type Checking}\label{section:type-checking}
+
+The next phase after parsing a \whiley program is type checking.
+The type checker ensures that all functions, methods, statements and expressions are well-typed.
+A key part of it is \emph{subtyping}.
+
+All types in \whiley are represented as automata, as described in \myref{section}{section:background-whiley-type-automata}.
+The implementation for subtyping can be found in class \javainline{wyil.util.type.SubtypeOperator}.
+The \javainline{SubtypeOperator} object stores the type automata of the two types that should be tested.
+Method \javainline{isSubtype} translates the subtype query into an intersection test:
+\texttt{T1} is a subtype of \texttt{T2} if and only if the intersection of \texttt{T1} with the complement of \texttt{T2} is non-empty.
+
+An intersection can either return a result immediately or depend on one or more recursive intersection queries.
+The intersection of \whileyinline{int} and \whileyinline{bool} is empty.
+Types \whileyinline{&a} and \whileyinline{&b} intersect if and only if types \whileyinline{a} and \whileyinline{b} intersect.
+Recursive queries use the same type automata, but a different automaton state as entry point.
+The \javainline{isIntersection} method therefore takes the automaton state index for both types as parameter.
+Furthermore, it takes for both types a flag denoting whether we consider the complement instead of the type itself.
+In the following, we write \whileyinline{!T} to denote the complement of type \whileyinline{T}.
+
+For recursive types, recursive intersection tests can incur an infinite recursion.
+To mitigate that problem, the intersection test is split into two methods, \javainline{isIntersection} and \javainline{isIntersectionInner}.
+The first one contains logic to break recursion.
+When recursion leads to the same test again, then the intersection is assumed to be non-empty.
+Method \javainline{isIntersectionInner} contains the actual intersection logic that needs to be extended in order to introduce lifetimes.
+
+
+\subsection{Lifetime Relation}
+The new subtyping rules presented in \myref{section}{section:design-subtyping} use the \emph{outlives} relation among lifetimes.
+We introduce a new class \javainline{wyil.util.type.LifetimeRelation} that stores this relation.
+Entries are added while recursing the AST in \javainline{wyc.builder.FlowTypeChecker}.
+An instance of \javainline{LifetimeRelation} is passed to \javainline{SubtypeOperator} in order to check the \emph{outlives} constraints in subtyping rules.
+
+The \emph{outlives} relation is a \emph{partial order}.
+Lifetimes declared in named blocks are ordered such that the lifetimes of outer blocks outlive the lifetimes of inner blocks.
+We store the currently declared named blocks in a \javainline{Stack}.
+The type checker treats lifetime \whileyinline{this} like a named block:
+method bodies are assumed to be enclosed in a block with name \whileyinline{this} such that it is always the outermost block.
+Furthermore, we store a \javainline{Set} of declared lifetime parameters.
+They outlive all named blocks, because the lifetimes are declared by the current method's caller.
+But there is no order within lifetime parameters.
+
+
+\subsection{Reference Types}
+
+We need to extend the intersection logic for reference types to respect the annotated lifetimes.
+One or both types can be inverted for the test, such that we have to consider four cases:
+
+\begin{enumerate}
+\item \whileyinline{&a:A} $\cap$ \whileyinline{!(&b:B)}\\
+This intersection is empty if and only if \whileyinline{&a:A} is a subtype of \whileyinline{&b:B}.
+As described in \myref{section}{section:design-subtyping}, this is the case if
+\begin{itemize}
+\item lifetime \whileyinline{a} outlives lifetime \whileyinline{b} and
+\item \whileyinline{A} and \whileyinline{B} describe the same type, i.e. the intersections \whileyinline{A} $\cap$ \whileyinline{!B} and \whileyinline{B} $\cap$ \whileyinline{!A} are empty.
+\end{itemize}
+
+The first condition can be checked using the newly introduced \javainline{LifetimeRelation}.
+Remember that our definition of \emph{outlives} is reflexive.
+The second one incurs two recursive intersection queries.
+
+\item \whileyinline{!(&a:A)} $\cap$ \whileyinline{&b:B}\\
+This case is symmetric to the first one.
+
+\item \whileyinline{&a:A} $\cap$ \whileyinline{&b:B}\\
+We have to check whether there is a value in both \whileyinline{&a:A} and \whileyinline{&b:B}.
+We claim that this is equivalent to intersecting \whileyinline{&A} and \whileyinline{&B}, i.e. using the lifeitme \whileyinline{*} instead of \whileyinline{a} and \whileyinline{b}.
+If there is a value in both \whileyinline{&a:A} and \whileyinline{&b:B}, then we can take that value and change its lifetime to \whileyinline{*}, which outlives all lifetimes.
+Due to the subtyping rule for references, the value will then be in both \whileyinline{&A} and \whileyinline{&B}.
+For the other direction, assume that there is a value in both \whileyinline{&A} and \whileyinline{&B}.
+Then it is also in both \whileyinline{&a:A} and \whileyinline{&b:B} because the lifetime \whileyinline{*} outlives \whileyinline{a} and \whileyinline{b}.
+
+
+\item \whileyinline{!(&a:A)} $\cap$ \whileyinline{!(&b:B)}
+The complement of a reference type contains values of types that are not references, e.g. \whileyinline{true} and \whileyinline{0}.
+These values are in the intersection, so it is non-empty regardless of \whileyinline{a}, \whileyinline{b}, \whileyinline{A} and \whileyinline{B}.
+\end{enumerate}
+
+
+\subsection{Method Types}\label{section:implementation-typecheck-methods}
+
+Our extension adds lifetime parameters and context lifetimes to method types.
+These concepts have been introduced in sections \ref{section:design-lifetime-parameters} and \ref{section:design-context-lifetimes}.
+They have to be considered for intersection tests.
+
+Lifetime parameters are an ordered list of lifetime names that may appear in the methods parameter and return types.
+The actual name of these lifetime parameters does not matter for the method's type, they are only placeholders.
+Consider the following method types:
+\begin{enumerate}
+\item \whileyinline{method<a,b>(&a:int)->(&b:int)}
+\item \whileyinline{method<b,a>(&b:int)->(&a:int)}
+\item \whileyinline{method<a,b>(&b:int)->(&a:int)}
+\end{enumerate}
+
+\noindent Our intuition suggests that the first two types are the same, because we only need to rename the lifetime parameters.
+But the third type is different:
+it cannot be transformed into the first two types only by renaming lifetime parameters.
+
+In \myref{section}{section:substitution-subtyping} we present an algorithm to substitute the actual lifetime names with abstract placeholders.
+The first lifetime parameter will be named \whileyinline{$1}, the second one \whileyinline{$2} and so forth.
+The types above will therefore be transformed to:
+\begin{enumerate}
+\item \whileyinline{method<$1,$2>(&$1:int)->(&$2:int)}
+\item \whileyinline{method<$1,$2>(&$1:int)->(&$2:int)}
+\item \whileyinline{method<$1,$2>(&$2:int)->(&$1:int)}
+\end{enumerate}
+
+\noindent Using this substitution and ignoring the symmetric and trivial case, we have to adopt the following intersections:
+
+\begin{enumerate}
+\item \whileyinline{method1} $\cap$ \whileyinline{!method2}\\
+This intersection is empty if and only if \whileyinline{method1} is a subtype of \whileyinline{method2}.
+As described in \myref{section}{section:design-discussion-lambda}, every context lifetime in the subtype must outlive a context lifetime in the supertype.
+Furthermore, the number of lifetime parameters must be the same in both method types.
+
+The remaining condition is that parameter types are contra-variant and return types co-variant.
+This is not changed by our lifetime extension, except for the substitution of lifetime parameters.
+
+\item \whileyinline{method1} $\cap$ \whileyinline{method2}\\
+We have to check whether there is a method that is in both method types.
+For such a method to exist, the number of lifetime parameters must match.
+But we do not need to consider context lifetimes here:
+an intersecting method can be chosen with an empty set of context lifetimes.
+Then it is in method types with arbitrary context lifetimes, provided that the remaining conditions are met.
+
+The remaining condition is that return types intersect.
+This is not changed by our extension, but we need to apply the lifetime substitution.
+\end{enumerate}
